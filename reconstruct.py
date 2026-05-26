@@ -324,6 +324,126 @@ class DUSt3RBackbone(Backbone):
         return ReconstructionResult(out_dir=out_dir, backbone=self.name)
 
 
+class DUSt3RSmoothBackbone(Backbone):
+    """DUSt3R per-pair priors + SE(3) second-difference temporal smoothness.
+
+    Same per-pair AsymmetricCroCo inference as DUSt3R; replaces the global
+    aligner with a subclass that adds a pose-acceleration penalty between
+    consecutive frames. Phase 1 diagnostic showed DUSt3R's priors work
+    but its global aligner produces 15-27x zigzag — this directly
+    addresses that defect while keeping the rest of the pipeline
+    identical for clean ablation against the baseline.
+
+    See dust3r_smooth_runner.py for the SmoothPointCloudOptimizer
+    implementation. Defaults: lam_rot=1.0, lam_trans=1.0 (override via
+    BRONCHO_DUST3R_LAM_{ROT,TRANS} env vars).
+    """
+
+    name = "dust3r-smooth"
+    default_python = "/home/mi3dr/.conda/envs/mast3r-slam/bin/python"
+    default_ckpt = ("/home/mi3dr/external/MASt3R-SLAM/checkpoints/"
+                    "DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth")
+    dust3r_module = ("/home/mi3dr/external/MASt3R-SLAM/thirdparty/"
+                     "mast3r/dust3r")
+
+    def install_instructions(self) -> str:
+        return ("Same install as 'dust3r' backbone. This is a different "
+                "algorithm reusing the same DUSt3R model + checkpoint.")
+
+    def _python(self) -> str:
+        return os.environ.get("BRONCHO_MAST3R_PYTHON", self.default_python)
+
+    def _ckpt(self) -> Path:
+        return Path(os.environ.get("BRONCHO_DUST3R_CKPT", self.default_ckpt))
+
+    def check_installed(self) -> Tuple[bool, str]:
+        if not Path(self.dust3r_module).exists():
+            return False, f"no dust3r module at {self.dust3r_module}"
+        if not Path(self._python()).exists():
+            return False, f"no python at {self._python()}"
+        if not self._ckpt().exists():
+            return False, f"no DUSt3R checkpoint at {self._ckpt()}"
+        return True, ""
+
+    def run(self, frames_dir: Path, out_dir: Path,
+            intrinsics_yaml: Optional[Path] = None) -> ReconstructionResult:
+        self.ensure_installed()
+        out_dir.mkdir(parents=True, exist_ok=True)
+        runner = Path(__file__).parent / "dust3r_smooth_runner.py"
+        lam_rot = os.environ.get("BRONCHO_DUST3R_LAM_ROT", "1.0")
+        lam_trans = os.environ.get("BRONCHO_DUST3R_LAM_TRANS", "1.0")
+        cmd = [
+            self._python(), str(runner),
+            "--frames_dir", str(frames_dir.resolve()),
+            "--out_dir", str(out_dir.resolve()),
+            "--ckpt", str(self._ckpt()),
+            "--lam_rot", lam_rot,
+            "--lam_trans", lam_trans,
+        ]
+        print(f"[dust3r-smooth] cmd={shlex.join(cmd)}")
+        subprocess.run(cmd, check=True)
+        return ReconstructionResult(out_dir=out_dir, backbone=self.name)
+
+
+class DUSt3RFoEBackbone(Backbone):
+    """DUSt3R + optical-flow focus-of-expansion sign-fix + SE(3) smoothness.
+
+    Per-pair RAFT flow gives forward/backward sign for each pair via the
+    FoE pattern (outward-radial = forward, inward = backward). This fixes
+    DUSt3R's per-pair sign ambiguity (the root cause of its zigzag), then
+    SE(3) smoothness cleans up residual high-freq wiggle. The full
+    "ours" combination.
+
+    Defaults: lam_sign=10, lam_rot=1, lam_trans=1. Override via env vars
+    BRONCHO_DUST3R_LAM_{SIGN,ROT,TRANS}.
+    """
+
+    name = "dust3r-foe"
+    default_python = "/home/mi3dr/.conda/envs/mast3r-slam/bin/python"
+    default_ckpt = ("/home/mi3dr/external/MASt3R-SLAM/checkpoints/"
+                    "DUSt3R_ViTLarge_BaseDecoder_512_dpt.pth")
+    dust3r_module = ("/home/mi3dr/external/MASt3R-SLAM/thirdparty/"
+                     "mast3r/dust3r")
+
+    def install_instructions(self) -> str:
+        return ("Same install as 'dust3r' backbone. Additionally needs "
+                "torchvision RAFT (bundled with torchvision >= 0.13; no "
+                "extra install for the mast3r-slam env).")
+
+    def _python(self) -> str:
+        return os.environ.get("BRONCHO_MAST3R_PYTHON", self.default_python)
+
+    def _ckpt(self) -> Path:
+        return Path(os.environ.get("BRONCHO_DUST3R_CKPT", self.default_ckpt))
+
+    def check_installed(self) -> Tuple[bool, str]:
+        if not Path(self.dust3r_module).exists():
+            return False, f"no dust3r module at {self.dust3r_module}"
+        if not Path(self._python()).exists():
+            return False, f"no python at {self._python()}"
+        if not self._ckpt().exists():
+            return False, f"no DUSt3R checkpoint at {self._ckpt()}"
+        return True, ""
+
+    def run(self, frames_dir: Path, out_dir: Path,
+            intrinsics_yaml: Optional[Path] = None) -> ReconstructionResult:
+        self.ensure_installed()
+        out_dir.mkdir(parents=True, exist_ok=True)
+        runner = Path(__file__).parent / "dust3r_foe_runner.py"
+        cmd = [
+            self._python(), str(runner),
+            "--frames_dir", str(frames_dir.resolve()),
+            "--out_dir", str(out_dir.resolve()),
+            "--ckpt", str(self._ckpt()),
+            "--lam_sign", os.environ.get("BRONCHO_DUST3R_LAM_SIGN", "10.0"),
+            "--lam_rot",   os.environ.get("BRONCHO_DUST3R_LAM_ROT",   "1.0"),
+            "--lam_trans", os.environ.get("BRONCHO_DUST3R_LAM_TRANS", "1.0"),
+        ]
+        print(f"[dust3r-foe] cmd={shlex.join(cmd)}")
+        subprocess.run(cmd, check=True)
+        return ReconstructionResult(out_dir=out_dir, backbone=self.name)
+
+
 class COLMAPBackbone(Backbone):
     """Classical SfM baseline. With bronchoscopy-aware preprocessing:
     CLAHE (LAB-L) on each frame for feature contrast + a circular bezel
@@ -381,6 +501,8 @@ class COLMAPBackbone(Backbone):
 BACKBONES = {
     "mast3r-slam": MASt3RSLAMBackbone,
     "dust3r": DUSt3RBackbone,
+    "dust3r-smooth": DUSt3RSmoothBackbone,
+    "dust3r-foe": DUSt3RFoEBackbone,
     "colmap": COLMAPBackbone,
 }
 

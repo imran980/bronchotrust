@@ -8,16 +8,18 @@ sizing on four paired CT–bronchoscopy cases.**
 
 ## Status
 
-Phase 1 baseline comparison closed (see verdict tables below). Three
-reconstruction backbones — MASt3R-SLAM, DUSt3R, COLMAP — installed,
-wired through a uniform [reconstruct.py](reconstruct.py) driver, and
-benchmarked on 3 real bronchoscopy videos + 2 synthetic clips. Headline:
-**MASt3R-SLAM fails everywhere** (retrieval-database collapse on
-endoluminal frames), **DUSt3R produces dense output but a non-coherent
-trajectory** (no SE(3)-smoothness in its global aligner), **COLMAP +
-CLAHE + bezel-mask** works on textured synthetic but starves on real
-mucosa. The calibration module, uncertainty module, and new dashboard
-are not built yet — see roadmap.
+Phase 1 baseline comparison closed; first version of the "ours"
+reconstruction working. Three baseline backbones installed
+(MASt3R-SLAM, DUSt3R, COLMAP) plus the **dust3r-foe** combination
+that fixes DUSt3R's trajectory failure mode. Headline: **MASt3R-SLAM
+fails everywhere** (retrieval-database collapse), **DUSt3R baseline
+produces dense output but a non-coherent trajectory** (16-26× zigzag,
+direction reversals on ~40% of consecutive frame pairs),
+**dust3r-foe** (RAFT optical-flow focus-of-expansion sign-fix + SE(3)
+smoothness) **eliminates direction reversals** and **triples the
+forward span on 5-V1 and 16-V1** while keeping the 1.8 M dense
+points unchanged. Calibration module, uncertainty module, and the
+new dashboard are not built yet — see roadmap.
 
 ## Pipeline (target architecture)
 
@@ -66,8 +68,10 @@ video.mp4 (uncalibrated)
 | Procedural bronchial-tree atlas (fallback when no patient CT) | [bronchus_atlas.py](bronchus_atlas.py) |
 | Video → frames + manifest + intrinsics yaml | [process_video_input.py](process_video_input.py) |
 | Split-conformal calibration math (tested) | [conformal.py](conformal.py), [tests/test_conformal.py](tests/test_conformal.py) |
-| Reconstruction driver (3 backends wired: mast3r-slam, dust3r, colmap) | [reconstruct.py](reconstruct.py); `python reconstruct.py --check-installed` |
+| Reconstruction driver (5 backends wired: mast3r-slam, dust3r, dust3r-smooth, dust3r-foe, colmap) | [reconstruct.py](reconstruct.py); `python reconstruct.py --check-installed` |
 | DUSt3R subprocess runner (per-pair + global aligner) | [dust3r_runner.py](dust3r_runner.py) |
+| DUSt3R + SE(3) smoothness runner (ablation row) | [dust3r_smooth_runner.py](dust3r_smooth_runner.py) |
+| DUSt3R + RAFT-FoE sign-fix + smoothness ("ours" v1) | [dust3r_foe_runner.py](dust3r_foe_runner.py), [flow_foe.py](flow_foe.py) |
 | COLMAP subprocess runner (CLAHE + bezel-mask + SfM) | [colmap_runner.py](colmap_runner.py) |
 
 5-class anatomical landmark scheme: `vocal_cord`, `trachea`, `main_carina`,
@@ -148,6 +152,46 @@ Three structural findings:
    Adding 3D value-noise + vessel streaks + mild specular (synth_v1) put
    COLMAP at 42% registration (vs 12% on real best) and dropped DUSt3R
    zigzag by 40%.
+
+## dust3r-foe ("ours" v1) result
+
+| Video | Method | Span | Zigzag | Reversals | Mean cos |
+|---|---|---:|---:|---:|---:|
+| 5-V1 | dust3r baseline | 0.43 | 22.0 | 19/48 | −0.23 |
+| 5-V1 | **dust3r-foe** | **1.39** | **8.8** | **0/48** | **+0.66** |
+| 13-V2 | dust3r baseline | 0.42 | 16.4 | 21/48 | −0.13 |
+| 13-V2 | **dust3r-foe** | **0.80** | **7.1** | **0/48** | **+0.77** |
+| 16-V1 | dust3r baseline | 0.35 | 26.5 | 16/48 | −0.08 |
+| 16-V1 | **dust3r-foe** | **1.07** | **13.2** | **3/48** | **+0.58** |
+
+Direction reversals (consecutive step-direction cosine < −0.5) went
+from 16-21 per video to 0-3. Mean step-to-step cosine flipped from
+anti-correlated to strongly positive (forward-flowing trajectory).
+Dense point count and per-pair geometry unchanged from baseline —
+only the trajectory got fixed.
+
+How it works:
+
+1. **Optical flow.** Torchvision RAFT-Large between every pair in
+   DUSt3R's swin-3 scene graph. Survives on textureless mucosa
+   because it uses correlation volumes on local intensity gradients,
+   not feature descriptors.
+2. **Focus-of-expansion classifier.** LSQ-fit the FoE from flow lines,
+   then weighted-vote sign(flow · (pixel − FoE)) → {+1 forward,
+   −1 backward, 0 uncertain} with confidence.
+3. **Per-pair sign hinge** added to DUSt3R's optimizer:
+   `max(0, −s_ij · z_ij)` on the z-component of each pair's relative
+   translation in camera-i's frame. Zero penalty when the sign agrees,
+   linear penalty when it disagrees.
+4. SE(3) second-difference (acceleration) smoothness on top, cleans up
+   residual high-freq wiggle. Scale-invariant via mean-step-length
+   normalisation; alone it was insufficient (Phase 1 ablation: zigzag
+   stayed at 15-19), but with FoE supplying the missing direction
+   information it does its intended job.
+
+The diagnostic from Phase 1 was that DUSt3R's per-pair priors are
+sign-ambiguous on bronchoscopy because the textureless mucosa
+underconstrains the matching. Optical flow fills exactly that gap.
 
 ## References
 
