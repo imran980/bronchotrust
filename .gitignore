@@ -1,0 +1,26 @@
+*.pyc
+**/*.pyc
+__pycache__/
+*__pycache__*
+*.so
+.vscode/
+
+# Reconstruction run outputs (regenerable, often GB-scale)
+runs/
+
+# Large data assets (provided externally, symlinked in)
+*.h5
+*.pt
+*.ply
+*.npy
+*.png
+
+# Image / dataset directories (provided externally)
+data/
+dataset/
+pretrained_gaussians/
+
+# Build artifacts
+build/
+output/
+*.egg-info/

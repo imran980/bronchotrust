@@ -1,0 +1,9 @@
+numpy
+matplotlib
+opencv-python
+tqdm
+open3d
+torch
+torchvision
+transformers>=4.40
+accelerate
