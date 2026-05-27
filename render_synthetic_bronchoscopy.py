@@ -179,6 +179,15 @@ def main():
     ap.add_argument("--png_depth_scale", type=float, default=2.55,
                     help="Depth scaling for Endo-2DTAM yaml (must match "
                          "what build_endo2dtam_scene writes).")
+    ap.add_argument("--fwd_smooth_sigma", type=float, default=2.5,
+                    help="Gaussian sigma (frames) applied to cam_pos. "
+                         "Smooths the trajectory through bifurcations "
+                         "so cam_fwd is naturally continuous; 0 = raw "
+                         "centerline polyline (snaps at branches).")
+    ap.add_argument("--min_valid_pixels", type=int, default=100,
+                    help="Skip frames where fewer than this many rays "
+                         "hit the mesh. Filters out the carina-region "
+                         "SSM-warp artifact.")
     args = ap.parse_args()
 
     color_dir = os.path.join(args.out_dir, "color")
@@ -216,13 +225,33 @@ def main():
             raise SystemExit(f"Template missing {n} landmark.")
 
     poly = _centerline_path(template)
-    cam_pos = _resample_polyline(poly, args.n_frames).astype(np.float64)
-    cam_fwd = np.zeros_like(cam_pos)
-    cam_fwd[:-1] = cam_pos[1:] - cam_pos[:-1]
-    cam_fwd[-1] = cam_fwd[-2] if args.n_frames > 1 else np.array([0, 0, -1])
-    cam_fwd /= np.maximum(np.linalg.norm(cam_fwd, axis=1, keepdims=True),
-                          1e-9)
-    print(f"Sampled {args.n_frames} camera positions along centerline.")
+    cam_pos_raw = _resample_polyline(poly, args.n_frames).astype(np.float64)
+    # The centerline polyline has discrete kink-angles at bifurcations.
+    # If we use it raw, cam_fwd snaps direction over a single frame at
+    # the carina + lobar branches, producing rotation-dominated motion
+    # that breaks optical-flow FoE. Gaussian-smooth the POSITIONS in
+    # time (sigma ~2-3 frames) so the trajectory curves gently through
+    # turns. cam_fwd is then the raw tangent of the smoothed path —
+    # naturally continuous, and camera stays inside the airway because
+    # the smoothing only deflects position by sub-mm at typical turns.
+    if args.fwd_smooth_sigma > 0:
+        from scipy.ndimage import gaussian_filter1d
+        cam_pos = np.stack([
+            gaussian_filter1d(cam_pos_raw[:, k],
+                              sigma=args.fwd_smooth_sigma, mode="nearest")
+            for k in range(3)
+        ], axis=1)
+    else:
+        cam_pos = cam_pos_raw
+    raw_fwd = np.zeros_like(cam_pos)
+    raw_fwd[:-1] = cam_pos[1:] - cam_pos[:-1]
+    raw_fwd[-1] = raw_fwd[-2] if args.n_frames > 1 else np.array([0, 0, -1])
+    cam_fwd = raw_fwd / np.maximum(
+        np.linalg.norm(raw_fwd, axis=1, keepdims=True), 1e-9)
+    max_offset = float(np.linalg.norm(cam_pos - cam_pos_raw, axis=1).max())
+    print(f"Sampled {args.n_frames} camera positions; "
+          f"path Gaussian-smoothed (sigma={args.fwd_smooth_sigma}, "
+          f"max deflection {max_offset:.2f} mm).")
 
     W = H = args.image_size
     # Convert diagonal FOV -> focal length.
@@ -235,10 +264,12 @@ def main():
         np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]], dtype=np.float64))
 
     pose_rows = []
-    cam_quats_w2c = np.zeros((args.n_frames, 4))
-    cam_trans_w2c = np.zeros((args.n_frames, 3))
+    cam_quats_w2c = []
+    cam_trans_w2c = []
     landmark_jsonl = []
     manifest_rows = []
+    n_skipped = 0
+    out_idx = 0  # serial index of successfully-written frames
 
     salmon = np.array([220, 110, 95], dtype=np.float32)
 
@@ -295,6 +326,15 @@ def main():
         ray_dirs = rays.numpy()[..., 3:]       # (H, W, 3)
 
         valid = np.isfinite(t_hit)
+        # Skip frames where rays miss the mesh almost entirely. This
+        # happens around the carina node where the SSM mean mesh has a
+        # known TPS-warp boundary artifact (see CLAUDE.md). Dropping
+        # those frames gives a clean sequence; downstream tools see no
+        # gap because we renumber.
+        if valid.sum() < args.min_valid_pixels:
+            n_skipped += 1
+            continue
+        out_idx += 1
         depth_img = np.where(valid, t_hit, 0.0).astype(np.float32)
 
         rgb_img = np.zeros((H, W, 3), dtype=np.float32)
@@ -338,13 +378,13 @@ def main():
         rgb_img = np.clip(rgb_img, 0, 255).astype(np.uint8)
 
         Image.fromarray(rgb_img).save(
-            os.path.join(color_dir, f"{i+1:06d}.png"))
-        np.save(os.path.join(depth_dir, f"{i+1:06d}.npy"), depth_img)
+            os.path.join(color_dir, f"{out_idx:06d}.png"))
+        np.save(os.path.join(depth_dir, f"{out_idx:06d}.npy"), depth_img)
 
         # GT pose (T_w2c was computed above)
         pose_rows.append(",".join(f"{x:.6f}" for x in T_c2w.T.flatten()))
-        cam_quats_w2c[i] = _rot_to_quat(T_w2c[:3, :3])
-        cam_trans_w2c[i] = T_w2c[:3, 3]
+        cam_quats_w2c.append(_rot_to_quat(T_w2c[:3, :3]))
+        cam_trans_w2c.append(T_w2c[:3, 3])
 
         # Landmark visibility (project to camera frame)
         visible = []
@@ -361,7 +401,8 @@ def main():
             # Occlusion check via depth_img: if the rendered depth at
             # (u, v) is much smaller than z, something occludes the
             # landmark.
-            ui, vi = int(round(u)), int(round(v))
+            ui = max(0, min(W - 1, int(round(u))))
+            vi = max(0, min(H - 1, int(round(v))))
             d_here = depth_img[vi, ui]
             occluded = d_here > 0 and d_here < z - 1.0
             if occluded:
@@ -372,7 +413,7 @@ def main():
                 "depth_mm": float(z),
                 "world": P.tolist(),
             })
-        landmark_jsonl.append({"frame": i + 1, "visible": visible})
+        landmark_jsonl.append({"frame": out_idx, "visible": visible})
 
         anns = []
         for vlm in visible:
@@ -390,9 +431,9 @@ def main():
             "subset": "synthetic",
             "split": "all",
             "session": "synth_v0",
-            "frame": i + 1,
+            "frame": out_idx,
             "path": os.path.abspath(
-                os.path.join(color_dir, f"{i+1:06d}.png")),
+                os.path.join(color_dir, f"{out_idx:06d}.png")),
             "width": W, "height": H,
             "annotations": anns,
         })
@@ -407,10 +448,12 @@ def main():
         for r in manifest_rows:
             f.write(json.dumps(r) + "\n")
 
+    cam_quats_w2c = np.asarray(cam_quats_w2c, dtype=np.float32)
+    cam_trans_w2c = np.asarray(cam_trans_w2c, dtype=np.float32)
     np.savez(
         os.path.join(args.out_dir, "params_gt.npz"),
-        cam_unnorm_rots=cam_quats_w2c.T[None, ...].astype(np.float32),
-        cam_trans=cam_trans_w2c.T[None, ...].astype(np.float32),
+        cam_unnorm_rots=cam_quats_w2c.T[None, ...],
+        cam_trans=cam_trans_w2c.T[None, ...],
         intrinsics=np.array([[fx, 0, cx], [0, fy, cy], [0, 0, 1]],
                             dtype=np.float32),
         org_width=np.array(W), org_height=np.array(H),
@@ -432,7 +475,8 @@ def main():
         for v in r["visible"]:
             by_name[v["name"]] = by_name.get(v["name"], 0) + 1
     print(f"\nWrote synthetic session at {args.out_dir}/")
-    print(f"  {args.n_frames} frames, {n_visible} landmark detections total")
+    print(f"  {out_idx} frames kept, {n_skipped} dropped (mesh-miss), "
+          f"{n_visible} landmark detections total")
     for n in LANDMARKS_TO_TRACK:
         print(f"    {n:10s} visible in {by_name.get(n, 0)} frames")
     print()

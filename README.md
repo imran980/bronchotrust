@@ -8,18 +8,23 @@ sizing on four paired CT–bronchoscopy cases.**
 
 ## Status
 
-Phase 1 baseline comparison closed; first version of the "ours"
-reconstruction working. Three baseline backbones installed
-(MASt3R-SLAM, DUSt3R, COLMAP) plus the **dust3r-foe** combination
-that fixes DUSt3R's trajectory failure mode. Headline: **MASt3R-SLAM
-fails everywhere** (retrieval-database collapse), **DUSt3R baseline
-produces dense output but a non-coherent trajectory** (16-26× zigzag,
-direction reversals on ~40% of consecutive frame pairs),
-**dust3r-foe** (RAFT optical-flow focus-of-expansion sign-fix + SE(3)
-smoothness) **eliminates direction reversals** and **triples the
-forward span on 5-V1 and 16-V1** while keeping the 1.8 M dense
-points unchanged. Calibration module, uncertainty module, and the
-new dashboard are not built yet — see roadmap.
+"Ours v1" reconstruction working end-to-end on real video. Pipeline:
+**dust3r-foe** (DUSt3R per-pair priors + RAFT focus-of-expansion
+sign-fix + SE(3) smoothness) → **SSM-fit** (PCA shape model from
+ATM22 surface SSM as prior, alternating-ICP with α + similarity, 37
+modes) → **per-vertex posterior sampling** (proper Bayesian
+N(α_MAP, σ²(AᵀA+λI)⁻¹), 100 samples). Tested on 3 real bronchoscopy
+videos with consistent metrics (median \|α\|≈1σ, σ̂²≈7-11 mm² in SSM
+frame, anatomically-valid tube fits with low-residual trunk +
+high-residual lobar branches).
+
+Phase 1 closed earlier (3 baselines compared: MASt3R-SLAM fails
+universally on bronchoscopy, DUSt3R baseline has 16-26× trajectory
+zigzag, COLMAP starves on textureless mucosa).
+
+Calibration (Phase 3), absolute-coverage calibration of the
+posterior STD via [conformal.py](conformal.py) on the Barbour
+paired-CT cases (Phase 7), and the new dashboard are not built yet.
 
 ## Pipeline (target architecture)
 
@@ -73,6 +78,8 @@ video.mp4 (uncalibrated)
 | DUSt3R + SE(3) smoothness runner (ablation row) | [dust3r_smooth_runner.py](dust3r_smooth_runner.py) |
 | DUSt3R + RAFT-FoE sign-fix + smoothness ("ours" v1) | [dust3r_foe_runner.py](dust3r_foe_runner.py), [flow_foe.py](flow_foe.py) |
 | COLMAP subprocess runner (CLAHE + bezel-mask + SfM) | [colmap_runner.py](colmap_runner.py) |
+| SSM-fit: PCA shape model to dust3r-foe observations + posterior sampling | [ssm_fit.py](ssm_fit.py) |
+| Visual diagnostics (trajectory overlay, cloud-vs-GT, dead-frame audit, posterior std) | [diag_synth.py](diag_synth.py), [diag_visualize.py](diag_visualize.py), [diag_ssm.py](diag_ssm.py), [diag_ssm_posterior.py](diag_ssm_posterior.py) |
 
 5-class anatomical landmark scheme: `vocal_cord`, `trachea`, `main_carina`,
 `rmb`, `lmb`. Used by [label_bifurcations.py](label_bifurcations.py) and the
@@ -192,6 +199,37 @@ How it works:
 The diagnostic from Phase 1 was that DUSt3R's per-pair priors are
 sign-ambiguous on bronchoscopy because the textureless mucosa
 underconstrains the matching. Optical flow fills exactly that gap.
+
+## SSM-fit + posterior result (3 real videos)
+
+After dust3r-foe gives coherent poses + per-frame point patches, we fit
+the ATM22 PCA surface SSM (37 modes, 147 k vertices) treating the
+patches as noisy observations of a tube whose shape lives in the PCA
+span. Alternating ICP between (α PCA coefficients) and (similarity
+transform R, t, s) with λ=10000 prior weight. Then sample N=100 α from
+the Gaussian posterior Σ_α = σ̂²·(AᵀA + λI)⁻¹ and propagate per-vertex
+world-space std.
+
+| Video | ‖α‖ | median \|α\| (σ) | σ̂² (mm²) | per-vert STD med | per-vert STD p95 | per-vert dist med | dist p95 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| 5-V1 | 14.89 | 1.07 | 8.35 | 0.00033 | 0.00091 | 0.167 | 0.640 |
+| 13-V2 | 9.85 | 0.86 | 10.58 | 0.00023 | 0.00058 | 0.069 | 0.183 |
+| 16-V1 | 10.82 | 1.08 | 7.65 | 0.00030 | 0.00060 | 0.104 | 0.376 |
+
+- **‖α‖** small (≤15 in z-score units across 37 modes), median \|α\|≈1σ
+  → fits stay inside the PCA training distribution.
+- **σ̂² ≈ 8-11 mm²** (RMSE ≈ 2.9-3.3 mm in SSM frame) consistent across
+  videos.
+- **Per-vertex posterior STD spatial structure**: low at central
+  trunk (well-observed), higher at lobar branches (extrapolated from
+  prior alone). Absolute magnitudes overconfident (model misspec —
+  residuals are systematic bias, not i.i.d. noise); will be calibrated
+  via split-conformal on the Barbour paired-CT cohort.
+
+The "uncertainty-aware" claim in the project one-liner is now
+mathematically defensible: real Bayesian posterior, not heuristic
+proxy. Absolute coverage will be a Phase 7 (Barbour) calibration step
+using [conformal.py](conformal.py).
 
 ## References
 

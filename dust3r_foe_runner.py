@@ -302,7 +302,67 @@ def main() -> int:
     conf = np.concatenate(all_conf, axis=0).astype(np.float32)
     _save_ply(args.out_dir / "points.ply", points, colors)
     np.save(args.out_dir / "confidence.npy", conf)
-    print(f"[dust3r_foe] {len(points)} dense points. done.")
+    print(f"[dust3r_foe] {len(points)} dense points.")
+
+    # ----- TSDF fusion -> mesh.ply -----
+    # Fuses per-frame depth maps (DUSt3R-predicted) using the now-coherent
+    # camera poses into a single signed-distance field; extracts a unified
+    # surface mesh via marching cubes. This is what makes a "measurable
+    # airway interior" possible — without it, the per-frame pointmaps
+    # remain fragmented blobs that don't agree about absolute geometry.
+    try:
+        import open3d as o3d
+        depths = scene.get_depthmaps()  # list of (H, W) tensors
+        poses = scene.get_im_poses().detach().cpu().numpy()  # (N, 4, 4) c2w
+        focals = scene.get_focals().detach().cpu().numpy().reshape(-1)
+        pp_arr = scene.get_principal_points().detach().cpu().numpy()
+        # Heuristic voxel size: 1/200 of the trajectory diagonal.
+        nz_mask = ~np.all(poses[:, :3, 3] == 0, axis=1)
+        if nz_mask.sum() >= 2:
+            traj_diag = float(np.linalg.norm(
+                poses[nz_mask][-1, :3, 3] - poses[nz_mask][0, :3, 3]))
+        else:
+            traj_diag = 1.0
+        voxel_size = max(traj_diag / 200.0, 1e-4)
+        sdf_trunc = 5 * voxel_size
+        print(f"[dust3r_foe] TSDF: voxel={voxel_size:.4f} "
+              f"sdf_trunc={sdf_trunc:.4f}  (traj_diag={traj_diag:.3f})")
+        volume = o3d.pipelines.integration.ScalableTSDFVolume(
+            voxel_length=voxel_size,
+            sdf_trunc=sdf_trunc,
+            color_type=o3d.pipelines.integration.TSDFVolumeColorType.RGB8,
+        )
+        n_integrated = 0
+        for i in range(len(rgb_list)):
+            if not nz_mask[i]:
+                continue
+            d_np = depths[i].detach().cpu().numpy().astype(np.float32)
+            H, W = d_np.shape
+            rgb_u8 = (rgb_list[i] * 255).astype(np.uint8)
+            rgbd = o3d.geometry.RGBDImage.create_from_color_and_depth(
+                o3d.geometry.Image(np.ascontiguousarray(rgb_u8)),
+                o3d.geometry.Image(np.ascontiguousarray(d_np)),
+                depth_scale=1.0,
+                depth_trunc=traj_diag * 10.0,
+                convert_rgb_to_intensity=False,
+            )
+            K_o3d = o3d.camera.PinholeCameraIntrinsic(
+                W, H, float(focals[i]), float(focals[i]),
+                float(pp_arr[i, 0]), float(pp_arr[i, 1]),
+            )
+            T_w2c = np.linalg.inv(poses[i])
+            volume.integrate(rgbd, K_o3d, T_w2c)
+            n_integrated += 1
+        mesh = volume.extract_triangle_mesh()
+        mesh.compute_vertex_normals()
+        out_mesh = args.out_dir / "mesh.ply"
+        o3d.io.write_triangle_mesh(str(out_mesh), mesh)
+        print(f"[dust3r_foe] TSDF integrated {n_integrated} frames -> "
+              f"{out_mesh}  ({len(mesh.vertices)} verts, {len(mesh.triangles)} tris)")
+    except Exception as e:
+        print(f"[dust3r_foe] TSDF fusion skipped: {e}")
+
+    print("[dust3r_foe] done.")
     return 0
 
 
