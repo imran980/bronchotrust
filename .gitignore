@@ -24,3 +24,6 @@ pretrained_gaussians/
 build/
 output/
 *.egg-info/
+
+# Archived legacy assets (preserved on disk, also in pre-gluemap-checkpoint branch)
+_archive/

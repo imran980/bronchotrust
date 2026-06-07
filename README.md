@@ -6,236 +6,167 @@ recovery, evaluated quantitatively on synthetic and phantom data and
 demonstrated as a clinical feasibility study for pediatric subglottic-stenosis
 sizing on four paired CT–bronchoscopy cases.**
 
-## Status
+# Use implementation from 
+https://lpanaf.github.io/cvpr26_gluemap/
 
-"Ours v1" reconstruction working end-to-end on real video. Pipeline:
-**dust3r-foe** (DUSt3R per-pair priors + RAFT focus-of-expansion
-sign-fix + SE(3) smoothness) → **SSM-fit** (PCA shape model from
-ATM22 surface SSM as prior, alternating-ICP with α + similarity, 37
-modes) → **per-vertex posterior sampling** (proper Bayesian
-N(α_MAP, σ²(AᵀA+λI)⁻¹), 100 samples). Tested on 3 real bronchoscopy
-videos with consistent metrics (median \|α\|≈1σ, σ̂²≈7-11 mm² in SSM
-frame, anatomically-valid tube fits with low-residual trunk +
-high-residual lobar branches).
+# 15_v2 — From-Scratch Gated Plan + Agent-Verification Guide
 
-Phase 1 closed earlier (3 baselines compared: MASt3R-SLAM fails
-universally on bronchoscopy, DUSt3R baseline has 16-26× trajectory
-zigzag, COLMAP starves on textureless mucosa).
+**Goal:** a defensible **scale-free Myer–Cotton % obstruction** on 15_v2 (the one parallax-viable video). Absolute mm in diameter is deferred to a blade-gated stage at the end, because it needs an external fact (Barbour's blade spec) you don't have yet — the *grade* does not.
 
-Calibration (Phase 3), absolute-coverage calibration of the
-posterior STD via [conformal.py](conformal.py) on the Barbour
-paired-CT cases (Phase 7), and the new dashboard are not built yet.
+**How to use this:** run ONE stage, the agent STOPs, then **you run the VERIFY block before approving.** If a VERIFY check fails, do not proceed — paste the failure back and we fix it. The agent's summary is *not* evidence; the cross-checks are.
 
-## Pipeline (target architecture)
+---
 
+## Locked decisions (baked in — do NOT let the agent relitigate these)
+
+These were each established with evidence. If the agent re-proposes any of them as a "new idea," that's a red flag that it has lost the context.
+
+1. **Intrinsics are pinned**, never refined. OPENCV model; `ba_refine_focal_length=0`, `ba_refine_extra_params=0`. Fisheye was rejected (its high-order coefficients explode and undistort to a blank frame).
+2. **Calibration video gives intrinsics, NOT transferable scale.** A board clip scales only its own reconstruction, not the bronchoscopy clip. Do not attempt checkerboard scale transfer.
+3. **Measure on the dense MVS cloud, not the Poisson mesh** (Poisson extent was 24–69% non-reproducible).
+4. **Slice at centerline points, NOT at camera positions** (the forward scope images the wall ahead of itself; the ring at point *p* comes from the camera that sat behind *p*).
+5. **Scale-free % obstruction = area ratio**, which is scale-invariant. This is the deliverable. No scale anchor is required for the grade.
+6. **No SfM method or fit function overcomes zero parallax.** Don't chase GLUEMAP / different matchers / cylinder-vs-circle to fix a low-parallax video — it's information-theoretic, not algorithmic.
+
+## Known agent failure signatures (watch for these every stage)
+
+- Uses `cap.set(CAP_PROP_POS_FRAMES)` for extraction → frame-index drift on H.264. **Demand sequential `cap.read()` + a hash check.**
+- Calls a video "corrupted" when the ffmpeg errors are all *non-monotonic DTS muxer warnings* (cosmetic) → not corruption.
+- Reports a frame "failed to register" when it actually registered in a *different sub-model* → connectivity confusion.
+- Saves the wrong (smaller) sub-model as the result → check it kept the largest one covering the target region.
+- Reports a **plausible-looking number with no validity check** (the 4 mm / 30-frame trap). Plausible ≠ correct.
+- Reports a % obstruction from slices at a *bend* or with area estimators that disagree 10–100× → garbage.
+
+---
+
+## STAGE 0 — Integrity + sequential frame extraction
+**Prompt to agent:**
 ```
-video.mp4 (uncalibrated)
-   │
-   ├─ ingest        ffmpeg → frames
-   │
-   ├─ calibrate     learned (AnyCalib-FT on textured synthetic)
-   │                + anatomical anchor (tracheal-diameter prior)
-   │                → intrinsics + metric scale
-   │
-   ├─ reconstruct   MASt3R two-view geometric priors
-   │                → dense surface mesh
-   │
-   ├─ quantify      deep ensemble (5×) or MC-dropout
-   │                → per-vertex uncertainty + extrapolated-region flags
-   │
-   ├─ prior-match   ATM22 PCA shape model (similarity fit, surface-to-surface)
-   │                → patient-frame airway prior
-   │
-   └─ output        uncertainty-coloured reconstruction + SSM overlay
-                    (no camera trail, no depth panel)
+15_v2 integrity + extraction. STOP at end. NO reconstruction.
+1. ffmpeg full decode: `ffmpeg -v error -i 15_v2.mp4 -f null -`. Classify each error line:
+   DTS/non-monotonic = cosmetic; "corrupt"/"concealing"/"error while decoding" = real.
+2. Decode ALL frames SEQUENTIALLY with cv2.read() (NOT cap.set(POS_FRAMES)). Report decodable
+   count vs container-claimed, # black frames, # frozen runs.
+3. Extract all frames sequentially to disk; save a frame_stats.json (idx, L_mean, valid).
+STOP. Report: decodable count, real-vs-cosmetic error split, black/frozen counts.
 ```
+**VERIFY (catch the agent):**
+- Real errors should be **0 or only a few tail frames** (15_v2 is intact per your integrity check). If it reports "corrupted," confirm the errors are DTS-only — if so, it's wrong.
+- It must say it used **sequential read**, not POS_FRAMES. If it used POS_FRAMES, reject — indices will be wrong downstream.
+- Frozen-run count should be ~0 in the working range. A long frozen run = a real defect; investigate.
 
-## Roadmap
-
-| # | Phase | Gate | Status |
-|---|---|---|---|
-| 1 | Baseline recon on 3 real videos (MASt3R-SLAM, DUSt3R, COLMAP) | ≥1 method coherent on 2/3 videos | **closed — gate fails 4/4** (see Phase 1 verdict below); DUSt3R per-pair priors are the salvageable signal |
-| 2 | Synthetic validation set, 20 textured sequences | mean surface error ≤ 1.0 mm vs GT mesh | renderer textured (synth_v1: +40% gradient mag, lifts COLMAP 3.5× + DUSt3R 5× points); 20-seq generator + GT-error eval not run |
-| 3 | Calibration module (AnyCalib FT + anatomical anchor) | predicted focal within 3%, distortion within 5%; recon ≤ 1.2 mm | not started |
-| 4 | Uncertainty (ensemble or MC-dropout) | ECE ≤ 0.1; Spearman ρ(σ, \|err\|) ≥ 0.6 on synthetic | [conformal.py](conformal.py) ready, ensembles not built |
-| 5 | Real-video eval on 10+ videos | 9/10 end-to-end + qualitative coherence | not started |
-| 6 | Integration with SSM (surface-to-surface registration) | unified pipeline runs both outputs without regression | SSM build done, matching not wired |
-| 7 | Clinical feasibility on 4 paired Barbour CT–bronchoscopy cases | mean surface ≤ 1.0 mm; stenosis diameter error ≤ 5% | not started |
-| 8 | Ablation (calibration on/off, uncertainty on/off, MASt3R vs DUSt3R vs COLMAP) + write-up | submission-ready draft | not started |
-
-## What runs today
-
-| Capability | Entry point |
-|---|---|
-| ATM22 → SSM corpus (centerline + surface PCA) | [preprocess_atm22.py](preprocess_atm22.py) → [build_atm22_corpus.py](build_atm22_corpus.py) → [label_bifurcations.py](label_bifurcations.py) → [build_correspondence.py](build_correspondence.py) → [register_surface.py](register_surface.py) → [fit_ssm.py](fit_ssm.py) |
-| SSM corpus reader | [atm22_corpus.py](atm22_corpus.py) |
-| Textured synthetic renderer (color + GT depth + GT pose; **depth scale 2.55**) | [render_synthetic_bronchoscopy.py](render_synthetic_bronchoscopy.py) |
-| Procedural bronchial-tree atlas (fallback when no patient CT) | [bronchus_atlas.py](bronchus_atlas.py) |
-| Video → frames + manifest + intrinsics yaml | [process_video_input.py](process_video_input.py) |
-| Split-conformal calibration math (tested) | [conformal.py](conformal.py), [tests/test_conformal.py](tests/test_conformal.py) |
-| Reconstruction driver (5 backends wired: mast3r-slam, dust3r, dust3r-smooth, dust3r-foe, colmap) | [reconstruct.py](reconstruct.py); `python reconstruct.py --check-installed` |
-| DUSt3R subprocess runner (per-pair + global aligner) | [dust3r_runner.py](dust3r_runner.py) |
-| DUSt3R + SE(3) smoothness runner (ablation row) | [dust3r_smooth_runner.py](dust3r_smooth_runner.py) |
-| DUSt3R + RAFT-FoE sign-fix + smoothness ("ours" v1) | [dust3r_foe_runner.py](dust3r_foe_runner.py), [flow_foe.py](flow_foe.py) |
-| COLMAP subprocess runner (CLAHE + bezel-mask + SfM) | [colmap_runner.py](colmap_runner.py) |
-| SSM-fit: PCA shape model to dust3r-foe observations + posterior sampling | [ssm_fit.py](ssm_fit.py) |
-| Visual diagnostics (trajectory overlay, cloud-vs-GT, dead-frame audit, posterior std) | [diag_synth.py](diag_synth.py), [diag_visualize.py](diag_visualize.py), [diag_ssm.py](diag_ssm.py), [diag_ssm_posterior.py](diag_ssm_posterior.py) |
-
-5-class anatomical landmark scheme: `vocal_cord`, `trachea`, `main_carina`,
-`rmb`, `lmb`. Used by [label_bifurcations.py](label_bifurcations.py) and the
-synthetic renderer.
-
-## Data assets
-
-- **ATM22** — population CT airway segmentations; basis of the SSM prior.
-- **Textured synthetic renderer** — flies a virtual camera through the SSM
-  mesh; emits GT depth (scale 2.55), pose, and landmark visibility.
-- **Phantom** — TBD for Phase 7 quantitative eval.
-- **Barbour cohort** — 4 paired pediatric bronchoscopy + CT cases for the
-  clinical feasibility demonstration.
-
-Not in scope: C3VD (colonoscopy), UAAL (intubation), BM-BronchoLC
-(landmark-detector training set — detector path retired).
-
-## Environment
-
-Single conda env (the Endo-2DTAM env split is gone):
-
-```bash
-conda create -n bronchotrust python=3.11 -y
-conda activate bronchotrust
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-pip install -r requirements.txt -r requirements-atm22.txt
+## STAGE 1 — Full-video contact sheet → you label → curate frames
+**Prompt to agent:**
 ```
+15_v2 frame triage. STOP at end.
+1. Contact sheet of the FULL video (every ~15th valid frame), each thumb labeled with its
+   sequential frame index. No classifier.
+STOP. I will mark ranges: glottis / subglottis / trachea / any instrument.
+```
+*(After you label, second prompt:)*
+```
+Select 35-40 curated frames spanning glottis -> subglottis -> upper trachea, with DENSE
+sampling through the sub-cord descent (that's the clinical region). Save a labeled 5xN contact
+sheet, each thumb = my segment + sequential index. Hash-verify each saved frame matches the
+canonical sequential frame at that index (report matches/total).
+STOP.
+```
+**VERIFY:**
+- **Eyeball the contact sheet yourself.** Confirm the sub-cord descent is densely sampled, frames are in focus (not mucus/blur), and labels match what you see.
+- Hash-verify result must be **N/N matches**. Anything less = index drift; reject.
+- Confirm frames look like 15_v2's anatomy (sanity that the right file was used).
 
-## Hard rules
+## STAGE 2 — Pinned intrinsics + distortion model
+**Prompt to agent:**
+```
+15_v2 intrinsics. STOP at end.
+Load 15_v2's per-session calibration video. Run cv2.calibrateCamera (OPENCV) AND
+cv2.fisheye.calibrate. Report for each: RMS, fx, fy, cx, cy, distortion, implied H/V FOV.
+Save an undistortion side-by-side (OPENCV | FISHEYE) on one board frame.
+Recommend a model and write intrinsics_pinned.json.
+STOP.
+```
+**VERIFY:**
+- RMS **< 0.5 px** (you have a strict-pass threshold). If the only calibration video is marginal, flag it.
+- **fx/fy ratio ≈ 1.000–1.002** (isotropic). A ratio like 1.2 means BA contamination — should not happen if pinned.
+- **FOV ≈ 96–98°** for this scope. ~50° would be the old focal-length bug.
+- **Expected: OPENCV wins on stability even if fisheye RMS is marginally lower.** Fisheye's k3/k4 should be large with alternating signs (that's *why* we reject it). If the agent recommends fisheye and its coefficients are small/stable, double-check — but the eject criterion is the undistortion blowing up.
 
-Lifted from [CLAUDE.md](CLAUDE.md):
+## STAGE 3 — Parallax gate (the make-or-break pre-check, cheap)
+**Prompt to agent:**
+```
+15_v2 parallax gate. Diagnostic only - SfM POSES, no MVS, no mesh. STOP at end.
+Lightweight recon on the Stage-1 curated frames: SuperPoint+LightGlue + COLMAP mapper, pinned
+intrinsics, init_min_tri_angle=4. Report: # registered; viewing-cone total angular extent
+(max pairwise optical-axis angle) over the SUB-CORD cameras; camera position bbox; lateral/along
+translation ratio.
+STOP.
+```
+**VERIFY (this gate decides everything):**
+- Sub-cord viewing-cone extent should be **~17°** (triage said 17.51°) and **lateral/along > 0.30** (triage: 7.15).
+- **If the cone comes back < 5°, STOP the whole plan** — 15_v2 is NOT viable after all, the triage was on different/garbage frames, and reconstruction cannot work. (This is exactly the 2.1° failure that killed 2_v2.)
+- Cross-check: this number should *roughly match the triage's 17.5°*. A big mismatch means the triage and this run used different frames — find out which is right before spending MVS.
+- **Honest caveat:** passing this gate is necessary, not sufficient. Coverage at Stage 5 can still fail.
 
-- Endo-2DTAM is shelved permanently.
-- No colonoscopy pivot.
-- No uninvited preprocessing — match training-time normalization exactly.
-- Don't rebuild the SSM correspondence pipeline (known TPS issue, accept as-is).
-- Document depth scale at every interface (past trap: C3VD raw=655.35 vs preprocessed=2.55).
-- Phase gates are written. Don't skip them. One change at a time.
+## STAGE 4 — Full reconstruction + connectivity + eyeball
+**Prompt to agent:**
+```
+15_v2 reconstruction. STOP at end.
+SuperPoint+LightGlue, exhaustive matcher, COLMAP mapper init_min_tri_angle=4, min_num_matches=8,
+intrinsics PINNED from intrinsics_pinned.json (ba_refine_focal_length=0, ba_refine_extra_params=0).
+Manual init pair from a sub-cord frame. MVS dense. (Poisson for VIEWING ONLY.)
+Report: registered/N, sparse, dense, mean reproj. List ALL sub-models with their point counts
+AND frame lists. State which one you kept and WHY (must be the largest covering the sub-cord frames).
+Verify final camera params == pinned (machine epsilon).
+Save a 3-view render of the DENSE MVS cloud + camera trajectory, colored along the trajectory.
+STOP.
+```
+**VERIFY:**
+- **Final intrinsics == pinned** (delta ~1e-7). If they moved, pinning failed; reject.
+- **ONE connected model covering the sub-cord frames.** If multiple sub-models, confirm it kept the **largest one that contains your sub-cord frames** — not a bigger sub-model elsewhere (the selector bug). Make it list point counts + frames for ALL sub-models.
+- **Eyeball the render:** does it look like a tube, with the trajectory running down the middle? A collapsed spike/ball = parallax problem (shouldn't happen if Stage 3 passed).
+- mean reproj err should be **~1–3 px**. Much higher = bad reconstruction.
 
-## Phase 1 verdict (3 methods × 3 real videos + 2 synthetic)
+## STAGE 5 — Centerline cross-section profile (scene units) + coverage gate
+**Prompt to agent:**
+```
+15_v2 cross-section profile on the MVS cloud (NOT Poisson). Scene units. STOP at end.
+1. Centerline = smooth spline through registered camera centers, ordered by frame; resample finely.
+2. Outlier-filter the cloud (drop points far from any camera).
+3. At each centerline sample p (tangent t): slab of points around p projected perpendicular to t.
+   SLICE AT CENTERLINE POINTS, NOT CAMERAS. Coverage over 36 angular bins; keep slices >=60%.
+4. Per kept slice compute area THREE ways - alpha-shape, convex hull, polar-median-r polygon -
+   and Deq=2*sqrt(A/pi). Report all three per slice.
+5. Output Area- and Deq-vs-arclength profiles colored by coverage%, + a 3D render of kept rings.
+STOP. Report: # measurable slices, profile, and per-slice the three area values.
+```
+**VERIFY (this is where garbage hides):**
+- **The three area estimators must AGREE within ~2×.** If alpha vs hull vs polar differ by **10–100×** (like 2_v2's 0.27 vs 26 vs bouncing), these are NOT closed rings — reject the slice; the "profile" is noise.
+- **Measurable slices must be in the sub-cord region**, not clustered at a single bend (2_v2's fake 68% came entirely from a bend).
+- Each kept slice: the **centerline point should fall inside the ring**.
+- Coverage on kept slices **≥60%**. If <60% everywhere → parallax/coverage failure (contradicts Stage 3 → investigate).
 
-Subsampled to 50 frames for DUSt3R (global aligner is O(N²) in memory).
-Span = first-last translation, pathlen = sum of consecutive step norms,
-zigzag = pathlen / span (1.0 = perfectly direct; >5 = wandering).
+## STAGE 6 — Scale-free % obstruction + clinician landmarks
+**Prompt to agent:**
+```
+15_v2 % obstruction. STOP at end.
+From the Stage-5 VALID slices only (>=60% coverage AND area estimators agreeing):
+- A_min = narrowest valid slice in the sub-cord region; A_ref = widest valid adjacent normal slice.
+- %obstruction = (1 - A_min/A_ref)*100. Report A_min, A_ref (scene units), the % , and which
+  arc-length positions / frames they correspond to.
+STOP.
+```
+**VERIFY:**
+- A_min and A_ref must both come from **validated** slices (coverage + estimator agreement). If either fails validity, the % is meaningless.
+- A_min must be **in the sub-cord region** you care about, not a bend artifact.
+- **Cross-check against ground truth:** the % should be consistent with the **surgeon's intraoperative grade** for 15_v2 (15_v2 is NOT CT-paired — 16_v1 was — so the op note / clinical grade is your ground truth). A big mismatch = the reconstruction isn't capturing the real stenosis.
+- Have the clinician confirm the landmark frames map to the right anatomy.
 
-| Source | Method | Registered | Span | Pathlen | Zigzag | Points |
-|---|---|---:|---:|---:|---:|---:|
-| 5-V1 (352) | MASt3R-SLAM | 3 / 352 | 0.31 | 0.31 | 1.0 | 106 k |
-| 5-V1 | DUSt3R | 50 / 50 | 0.43 | 9.44 | **22×** | 1.8 M |
-| 5-V1 | COLMAP+CLAHE | 10 / 352 | 10.62 | 11.19 | 1.1 | 150 |
-| 13-V2 (501) | MASt3R-SLAM | 2 / 501 | 0.25 | 0.25 | 1.0 | 140 k |
-| 13-V2 | DUSt3R | 50 / 50 | 0.42 | 6.92 | **16×** | 2.0 M |
-| 13-V2 | COLMAP+CLAHE | 10 / 501 | 10.02 | 28.49 | 2.8 | 150 |
-| 16-V1 (572) | MASt3R-SLAM | 36 / 572 | 1.12 | 1.90 | 1.7 | 2.2 M |
-| 16-V1 | DUSt3R | 50 / 50 | 0.35 | 9.28 | **27×** | 1.9 M |
-| 16-V1 | COLMAP+CLAHE | 68 / 572 | 8.23 | 73.11 | 8.9 | 510 |
-| synth_v0 (untextured) | MASt3R-SLAM | 1 / 200 | – | – | – | – |
-| synth_v0 | DUSt3R | 50 / 50 | 0.70 | 17.85 | 25.4 | 179 k |
-| synth_v0 | COLMAP+CLAHE | 24 / 200 | 13.65 | 14.59 | 1.1 | 714 |
-| **synth_v1 (textured)** | MASt3R-SLAM | 1 / 200 | – | – | – | – |
-| **synth_v1** | DUSt3R | 50 / 50 | 0.89 | 13.35 | **15.0** | **871 k** |
-| **synth_v1** | COLMAP+CLAHE | **84 / 200** | 13.76 | 16.64 | 1.2 | **3 860** |
+## STAGE 7 — Absolute mm (GATED on Barbour's blade spec — do not start without it)
+Only when Barbour provides: (a) which blade dimension he uses, (b) its mm value, (c) how he locates the two endpoints. Then derive scale from the in-model blade and convert the profile to mm.
+**VERIFY:** sub-cord Deq must land in **pediatric range (single-digit mm)**. A 20 mm subglottis = wrong scale. If you ever also get a CT-paired video with a real *subglottic* (not intubated/tracheal) measurement, cross-check the blade-derived scale against it.
 
-Three structural findings:
+---
 
-1. **MASt3R-SLAM's retrieval database collapses on endoluminal frames.**
-   The "Failed to relocalize" loop fires on every video, including
-   textured synthetic. Texture quality is not the bottleneck — its
-   per-frame retrieval module is.
-2. **DUSt3R's per-pair priors work; its global aligner doesn't.**
-   Consistent ~535-555 px focal estimate across videos, 1.8-2 M dense
-   points, but zigzag 16-27× means the trajectory wanders. The aligner
-   has no SE(3) temporal-continuity prior. This is the actionable
-   engineering lever for the next phase.
-3. **The textured synthetic must out-feature real video for Phase 2.**
-   synth_v0 (Lambertian salmon) was *worse* than real for all methods.
-   Adding 3D value-noise + vessel streaks + mild specular (synth_v1) put
-   COLMAP at 42% registration (vs 12% on real best) and dropped DUSt3R
-   zigzag by 40%.
-
-## dust3r-foe ("ours" v1) result
-
-| Video | Method | Span | Zigzag | Reversals | Mean cos |
-|---|---|---:|---:|---:|---:|
-| 5-V1 | dust3r baseline | 0.43 | 22.0 | 19/48 | −0.23 |
-| 5-V1 | **dust3r-foe** | **1.39** | **8.8** | **0/48** | **+0.66** |
-| 13-V2 | dust3r baseline | 0.42 | 16.4 | 21/48 | −0.13 |
-| 13-V2 | **dust3r-foe** | **0.80** | **7.1** | **0/48** | **+0.77** |
-| 16-V1 | dust3r baseline | 0.35 | 26.5 | 16/48 | −0.08 |
-| 16-V1 | **dust3r-foe** | **1.07** | **13.2** | **3/48** | **+0.58** |
-
-Direction reversals (consecutive step-direction cosine < −0.5) went
-from 16-21 per video to 0-3. Mean step-to-step cosine flipped from
-anti-correlated to strongly positive (forward-flowing trajectory).
-Dense point count and per-pair geometry unchanged from baseline —
-only the trajectory got fixed.
-
-How it works:
-
-1. **Optical flow.** Torchvision RAFT-Large between every pair in
-   DUSt3R's swin-3 scene graph. Survives on textureless mucosa
-   because it uses correlation volumes on local intensity gradients,
-   not feature descriptors.
-2. **Focus-of-expansion classifier.** LSQ-fit the FoE from flow lines,
-   then weighted-vote sign(flow · (pixel − FoE)) → {+1 forward,
-   −1 backward, 0 uncertain} with confidence.
-3. **Per-pair sign hinge** added to DUSt3R's optimizer:
-   `max(0, −s_ij · z_ij)` on the z-component of each pair's relative
-   translation in camera-i's frame. Zero penalty when the sign agrees,
-   linear penalty when it disagrees.
-4. SE(3) second-difference (acceleration) smoothness on top, cleans up
-   residual high-freq wiggle. Scale-invariant via mean-step-length
-   normalisation; alone it was insufficient (Phase 1 ablation: zigzag
-   stayed at 15-19), but with FoE supplying the missing direction
-   information it does its intended job.
-
-The diagnostic from Phase 1 was that DUSt3R's per-pair priors are
-sign-ambiguous on bronchoscopy because the textureless mucosa
-underconstrains the matching. Optical flow fills exactly that gap.
-
-## SSM-fit + posterior result (3 real videos)
-
-After dust3r-foe gives coherent poses + per-frame point patches, we fit
-the ATM22 PCA surface SSM (37 modes, 147 k vertices) treating the
-patches as noisy observations of a tube whose shape lives in the PCA
-span. Alternating ICP between (α PCA coefficients) and (similarity
-transform R, t, s) with λ=10000 prior weight. Then sample N=100 α from
-the Gaussian posterior Σ_α = σ̂²·(AᵀA + λI)⁻¹ and propagate per-vertex
-world-space std.
-
-| Video | ‖α‖ | median \|α\| (σ) | σ̂² (mm²) | per-vert STD med | per-vert STD p95 | per-vert dist med | dist p95 |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| 5-V1 | 14.89 | 1.07 | 8.35 | 0.00033 | 0.00091 | 0.167 | 0.640 |
-| 13-V2 | 9.85 | 0.86 | 10.58 | 0.00023 | 0.00058 | 0.069 | 0.183 |
-| 16-V1 | 10.82 | 1.08 | 7.65 | 0.00030 | 0.00060 | 0.104 | 0.376 |
-
-- **‖α‖** small (≤15 in z-score units across 37 modes), median \|α\|≈1σ
-  → fits stay inside the PCA training distribution.
-- **σ̂² ≈ 8-11 mm²** (RMSE ≈ 2.9-3.3 mm in SSM frame) consistent across
-  videos.
-- **Per-vertex posterior STD spatial structure**: low at central
-  trunk (well-observed), higher at lobar branches (extrapolated from
-  prior alone). Absolute magnitudes overconfident (model misspec —
-  residuals are systematic bias, not i.i.d. noise); will be calibrated
-  via split-conformal on the Barbour paired-CT cohort.
-
-The "uncertainty-aware" claim in the project one-liner is now
-mathematically defensible: real Bayesian posterior, not heuristic
-proxy. Absolute coverage will be a Phase 7 (Barbour) calibration step
-using [conformal.py](conformal.py).
-
-## References
-
-- ATM22: https://atm22.grand-challenge.org/
-- MASt3R / MASt3R-SLAM: https://github.com/naver/mast3r
-- DUSt3R: https://github.com/naver/dust3r
-- AnyCalib (learned single-image calibration)
-- Split conformal: Lei et al., JASA 2018; Vovk et al., 2005
-- Barbour pediatric subglottic-stenosis cohort (paired CT + bronchoscopy)
+### The one rule that ties it together
+For every stage, the agent must hand you a number **plus** the independent check that makes it trustworthy (a hash match, an estimator agreement, a cross-check against the triage or the surgeon's grade, an in-range sanity). A number with no check is not a result — it's a claim. Send the checks back here and I'll tell you if they actually clear.

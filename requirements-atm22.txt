@@ -1,9 +1,0 @@
-nibabel
-kimimaro
-crackle-codec
-scikit-image
-trimesh
-networkx
-numpy
-tqdm
-h5py
