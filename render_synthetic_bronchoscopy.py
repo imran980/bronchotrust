@@ -48,6 +48,7 @@ from PIL import Image
 from tqdm import tqdm
 
 from atm22_corpus import Corpus
+from mesh_warp import apply_warp
 
 # Inlined from the deleted render_external_view.py.
 CENTERLINE_PATH_LANDMARKS = ["TRACHEA", "CARINA", "RMB_BIF", "BI_BIF"]
@@ -60,7 +61,7 @@ def _build_graph(n_nodes, edges):
     return G
 
 
-def _centerline_path(template):
+def _centerline_path(template, return_node_indices=False):
     nodes = template.centerline_nodes
     edges = template.centerline_edges
     G = _build_graph(len(nodes), edges)
@@ -75,6 +76,8 @@ def _centerline_path(template):
         if idx_path:
             seg = seg[1:]
         idx_path.extend(seg)
+    if return_node_indices:
+        return nodes[idx_path], np.array(idx_path, dtype=np.int64)
     return nodes[idx_path]
 
 
@@ -188,6 +191,34 @@ def main():
                     help="Skip frames where fewer than this many rays "
                          "hit the mesh. Filters out the carina-region "
                          "SSM-warp artifact.")
+    ap.add_argument("--subject_id", default=None,
+                    help="If set (e.g. 'ATM_001_0000'), use that subject's "
+                         "corresponded_surface_verts as the GT mesh instead "
+                         "of the SSM mean. Used for per-patient stand-in "
+                         "renders before Barbour CT pairs are available.")
+    # Fix 5 (2026-05-28): mesh warps for empirical noise-floor calibration.
+    ap.add_argument("--warp_type", default="none",
+                    choices=["none", "stenosis", "taper", "curvature"],
+                    help="Inject a controlled mesh deformation before "
+                         "rendering. 'stenosis' = Gaussian radial narrowing "
+                         "in trachea; 'taper' = mild subglottic taper "
+                         "confounder; 'curvature' = sinusoidal trachea "
+                         "bend confounder.")
+    ap.add_argument("--warp_center_frac", type=float, default=0.5,
+                    help="Stenosis center as fraction of trachea arclength "
+                         "(0=top, 1=carina). Only used with --warp_type=stenosis.")
+    ap.add_argument("--warp_span_mm", type=float, default=10.0,
+                    help="Stenosis full-width-at-half-max in mm. "
+                         "Only used with --warp_type=stenosis.")
+    ap.add_argument("--warp_severity", type=float, default=0.50,
+                    help="Stenosis severity: radius scales by (1 - severity) "
+                         "at center. Only used with --warp_type=stenosis.")
+    ap.add_argument("--warp_curvature_amplitude_mm", type=float, default=4.0,
+                    help="Lateral bend amplitude in mm. Only used with "
+                         "--warp_type=curvature.")
+    ap.add_argument("--ssm_template_dir", default="ssm_template",
+                    help="Directory with vertex_segment.npy and "
+                         "centerline_segment.npy (needed for warps).")
     args = ap.parse_args()
 
     color_dir = os.path.join(args.out_dir, "color")
@@ -204,9 +235,50 @@ def main():
     faces = corpus.surface_template_faces
     if faces is None:
         raise SystemExit("No surface_template_faces in corpus.")
-    verts = ssm["mean_shape"].astype(np.float32)
+    if args.subject_id is not None:
+        # Render from a specific subject's mesh (in SSM correspondence
+        # frame so landmark coordinates from the template still apply).
+        subj = corpus.load(args.subject_id)
+        verts = subj.corresponded_surface_verts.astype(np.float32)
+        print(f"Loaded subject {args.subject_id} mesh: {len(verts)} verts")
+    else:
+        verts = ssm["mean_shape"].astype(np.float32)
+        print(f"Loaded SSM mean mesh: {len(verts)} verts")
     tris = faces.astype(np.uint32)
-    print(f"Loaded SSM mean mesh: {len(verts)} verts, {len(tris)} faces")
+    print(f"  {len(tris)} faces")
+
+    # Build the centerline path BEFORE the warp so we can also bend the
+    # camera trajectory for the curvature confounder.
+    poly_full, poly_node_idx = _centerline_path(template, return_node_indices=True)
+    poly_full = poly_full.astype(np.float64)
+
+    # Fix 5: optional mesh warp + (for curvature) centerline bend.
+    warp_info = {"applied": False, "type": args.warp_type}
+    if args.warp_type != "none":
+        ssm_template_dir = args.ssm_template_dir
+        vertex_segment = np.load(os.path.join(
+            ssm_template_dir, "vertex_segment.npy"))
+        centerline_segment = np.load(os.path.join(
+            ssm_template_dir, "centerline_segment.npy"))
+        path_segments = centerline_segment[poly_node_idx]
+        TRACHEA_LABEL = 0  # per compute_vertex_segment.SEG_NAMES
+        warp_kwargs = {}
+        if args.warp_type == "stenosis":
+            warp_kwargs = dict(center_frac=args.warp_center_frac,
+                               span_mm=args.warp_span_mm,
+                               severity=args.warp_severity)
+        elif args.warp_type == "curvature":
+            warp_kwargs = dict(amplitude_mm=args.warp_curvature_amplitude_mm)
+        verts_warped, poly_full, warp_info = apply_warp(
+            verts.astype(np.float64), poly_full, path_segments,
+            vertex_segment, TRACHEA_LABEL, args.warp_type, **warp_kwargs)
+        verts = verts_warped.astype(np.float32)
+        print(f"[warp] {warp_info}")
+    # Persist warp record for ALL runs (including warp_type=none, so
+    # calibration analysis always finds the file).
+    os.makedirs(args.out_dir, exist_ok=True)
+    with open(os.path.join(args.out_dir, "warp.json"), "w") as f:
+        json.dump(warp_info, f, indent=2)
 
     mesh_t = o3d.t.geometry.TriangleMesh()
     mesh_t.vertex.positions = o3d.core.Tensor(verts)
@@ -224,7 +296,7 @@ def main():
         if n not in landmark_positions:
             raise SystemExit(f"Template missing {n} landmark.")
 
-    poly = _centerline_path(template)
+    poly = poly_full
     cam_pos_raw = _resample_polyline(poly, args.n_frames).astype(np.float64)
     # The centerline polyline has discrete kink-angles at bifurcations.
     # If we use it raw, cam_fwd snaps direction over a single frame at
