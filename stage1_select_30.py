@@ -1,211 +1,230 @@
-"""STAGE 1: select 30 frames spanning blade->glottis->subglottis->trachea->tube.
+"""STAGE 1 (gated plan): curate ~36 frames for 15_v2, DUAL-PASS sub-cord.
 
-Segment ranges (assumed defaults; user can swap individual frames at the gate):
-  - blade            : f0   .. f15    (laryngoscope blade, pre-glottis)
-  - glottis          : f15  .. f80    (vocal cords; L1=f20)
-  - subglottic       : f80  .. f700   (descent into upper trachea; L2=f140)
-  - trachea (mid+distal): f700 .. f3300 (long stretch; L3=f2250)
-  - transition+tube  : f3300 .. f3484  (trachea -> 4-mm cylinder, packed)
+Clinical insight (user, confirmed on contact sheet): 15_v2 images the
+subglottis TWICE -- insertion (f50-105) and withdrawal (f1500-1740). The two
+opposing/maneuvering viewpoints of the same subglottic ring are the parallax
+source (triage cone 17.5 deg, lateral/along 7.15). So we sample the sub-cord
+region DENSELY from BOTH passes, with a trachea backbone (descending f105-400
+and ascending f1300-1500, which image overlapping trachea wall) so the two
+passes fuse into ONE connected reconstruction.
 
-Counts:
-  blade=2, glottis=4, subglottic=6, trachea=6, transition+tube=12 (incl. ~3 inside-tube)
-  total = 30
+Improvements over the old stage1 + stage1b two-step:
+  - SINGLE sequential extraction (no cap.set(POS_FRAMES) -> no H.264 drift).
+  - Within each window, pick k frames at equal cumulative-motion intervals
+    (optical-flow proxy), then SNAP each pick to the locally sharpest frame
+    (Laplacian variance over the ROI) to avoid motion-blur / mucus frames.
+  - HASH-VERIFY every saved frame's 32x18 SHA1 against the Stage-0 canonical
+    frame_stats.json hash at that index (report matches/total; must be N/N).
 
-Spacing: within each segment, pick frames at equal cumulative-grayscale-diff
-intervals between consecutive VALID frames (proxy for optical flow). This avoids
-clustering on stretches where the camera is momentarily still.
-
-Outputs (runs/gated2/2_v2/):
-  stage1_frames/seg_<NAME>_f<NNNNN>.png   : 30 full-res PNGs
-  contact_30.png                          : 5x6 labeled contact sheet
-  stage1_selection.json                   : per-frame metadata
+Outputs (--out, default runs/gluemap_15v2/15_v2/stage1/):
+  images/f<NNNNN>.png      curated frames (named by sequential index)
+  contact_curated.png      labeled contact sheet (segment + index)
+  stage1_selection.json    selection + per-window picks + hash-verify result
 """
 from __future__ import annotations
+
+import argparse
+import hashlib
 import json
 from pathlib import Path
 
 import cv2
 import numpy as np
 
-VIDEO = Path("/home/mi3dr/dataset/validation-videos/First 15 Videos/2-V2.MP4")
-OUT = Path("/home/mi3dr/projects/bronchotrust/runs/gated2/2_v2")
-FRAMES = OUT / "stage1_frames"
-FRAMES.mkdir(parents=True, exist_ok=True)
+DEF_VIDEO = "/home/mi3dr/dataset/validation-videos/First 13 Videos Trimmed/15_v2.mp4"
+DEF_STAGE0 = "/home/mi3dr/projects/bronchotrust/runs/gluemap_15v2/15_v2/stage0"
+DEF_OUT = "/home/mi3dr/projects/bronchotrust/runs/gluemap_15v2/15_v2/stage1"
 
-SEGMENTS = [
-    # (name, lo_inclusive, hi_exclusive, count)
-    ("blade",       0,    15,   2),
-    ("glottis",     15,   80,   4),
-    ("subglottic",  80,   700,  6),
-    ("trachea",     700,  3300, 6),
-    ("transition_tube", 3300, 3485, 12),  # includes ~3 inside-tube tail
+# (name, lo_inclusive, hi_exclusive, count) -- dual-pass, disjoint windows
+DEFAULT_WINDOWS = [
+    ("glottis_in",  0,    50,   3),
+    ("subglot_in",  50,   105,  9),   # ROI dense (insertion)
+    ("trachea_in",  105,  400,  6),
+    ("trachea_out", 1300, 1500, 6),
+    ("subglot_out", 1500, 1740, 9),   # ROI dense (withdrawal)
+    ("glottis_out", 1740, 1822, 3),
 ]
 
-# Diff downsample factor for the cumulative-motion proxy
-DIFF_DS = 6  # 1920/6 = 320
+SEG_COLOR = {
+    "glottis_in":  (40, 200, 240), "subglot_in":  (90, 220, 90),
+    "trachea_in":  (220, 160, 50), "trachea_out": (200, 120, 40),
+    "subglot_out": (60, 180, 60),  "glottis_out": (30, 160, 200),
+}
+DIFF_DS = 6
+SHARP_SNAP = 3  # +/- candidate frames to search for the sharpest
+
+
+def frame_sha1(fr):
+    return hashlib.sha1(
+        cv2.resize(fr, (32, 18), interpolation=cv2.INTER_AREA).tobytes()
+    ).hexdigest()
 
 
 def main():
-    stats = np.load(OUT / "frame_stats.npz")
-    valid = stats["valid"].astype(bool)
-    L_mean = stats["L_mean"]
-    N = len(valid)
-    print(f"loaded {N} frames, valid={int(valid.sum())}")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--video", default=DEF_VIDEO)
+    ap.add_argument("--stage0", default=DEF_STAGE0)
+    ap.add_argument("--out", default=DEF_OUT)
+    args = ap.parse_args()
 
-    # Pass A: compute consecutive grayscale-absdiff for every valid frame pair
-    # (we need this for spacing inside any segment that has many valid frames).
-    cap = cv2.VideoCapture(str(VIDEO))
-    diff_per_frame = np.zeros(N, dtype=np.float32)  # diff between frame i-1 and i (valid only)
+    stage0 = Path(args.stage0)
+    out = Path(args.out)
+    img_dir = out / "images"
+    img_dir.mkdir(parents=True, exist_ok=True)
+    video = Path(args.video)
+
+    stats = np.load(stage0 / "frame_stats.npz")
+    valid = stats["valid"].astype(bool)
+    N = len(valid)
+    canon = json.loads((stage0 / "frame_stats.json").read_text())
+    canon_sha = {r["idx"]: r["sha1"] for r in canon}
+    mask = cv2.imread(str(stage0 / "content_mask.png"), cv2.IMREAD_GRAYSCALE) > 0
+    print(f"frames N={N} valid={int(valid.sum())}; ROI px={int(mask.sum())}")
+
+    # ---- Pass 1: sequential motion (diff) + sharpness (Laplacian var) ----
+    diff = np.zeros(N, np.float32)
+    sharp = np.zeros(N, np.float32)
+    ys, xs = np.where(mask)
+    y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
+    cap = cv2.VideoCapture(str(video))
     last_g = None
-    last_fi = -1
     for fi in range(N):
         ok, fr = cap.read()
         if not ok:
             break
         if not valid[fi]:
+            last_g = None
             continue
         g = cv2.cvtColor(fr, cv2.COLOR_BGR2GRAY)
-        g = cv2.resize(g, (g.shape[1] // DIFF_DS, g.shape[0] // DIFF_DS),
-                       interpolation=cv2.INTER_AREA)
+        roi = g[y0:y1, x0:x1]
+        sharp[fi] = cv2.Laplacian(roi, cv2.CV_64F).var()
+        gd = cv2.resize(g, (g.shape[1] // DIFF_DS, g.shape[0] // DIFF_DS),
+                        interpolation=cv2.INTER_AREA)
         if last_g is not None:
-            d = float(np.abs(g.astype(np.int16) - last_g.astype(np.int16)).mean())
-            diff_per_frame[fi] = d
-        last_g = g
-        last_fi = fi
-        if fi % 500 == 0:
-            print(f"  diff scan {fi}/{N}  d={diff_per_frame[fi]:.2f}")
+            diff[fi] = float(np.abs(gd.astype(np.int16)
+                                    - last_g.astype(np.int16)).mean())
+        last_g = gd
+        if fi % 400 == 0:
+            print(f"  scan {fi}/{N}", flush=True)
     cap.release()
 
-    # Pass B: select per segment by equal-cumulative-diff partitions.
-    selection = []  # list of dicts
-    for name, lo, hi, k in SEGMENTS:
-        # candidate valid indices in [lo, hi)
-        cand = np.array([fi for fi in range(lo, min(hi, N)) if valid[fi]],
-                        dtype=int)
-        if len(cand) < k:
-            print(f"WARN: segment {name} only has {len(cand)} valid; "
-                  f"using all + may shortfall ({k} requested)")
+    # ---- select per window ----
+    selection = []
+    for name, lo, hi, k in DEFAULT_WINDOWS:
+        cand = np.array([fi for fi in range(lo, min(hi, N)) if valid[fi]], int)
+        if len(cand) == 0:
+            print(f"WARN {name}: no valid frames in [{lo},{hi})")
+            continue
+        if len(cand) <= k:
             picked = cand.tolist()
-        elif k == 1:
-            picked = [int(cand[len(cand) // 2])]
         else:
-            # cumulative diff along cand (diff_per_frame is keyed by absolute fi)
-            d = diff_per_frame[cand]
+            d = diff[cand].copy()
             d[0] = 0.0
             cum = np.cumsum(d)
-            total = float(cum[-1])
-            if total < 1e-6:
-                picked = np.linspace(cand[0], cand[-1], k).round().astype(int).tolist()
-            else:
-                targets = np.linspace(0, total, k)
-                pick_ix = []
-                for t in targets:
-                    j = int(np.searchsorted(cum, t))
-                    j = min(max(j, 0), len(cand) - 1)
-                    pick_ix.append(j)
-                # dedup while preserving order
-                seen = set(); uniq = []
-                for j in pick_ix:
-                    if j not in seen:
-                        seen.add(j); uniq.append(j)
-                # if dedup shrank, fill greedily with max-gap insertions
-                while len(uniq) < k:
-                    # find largest gap between consecutive picked positions
-                    uniq_sorted = sorted(uniq)
-                    best_gap, best_j = -1, None
-                    for a, b in zip(uniq_sorted[:-1], uniq_sorted[1:]):
-                        gap = b - a
-                        if gap > best_gap:
-                            best_gap, best_j = gap, (a + b) // 2
-                    if best_j is None or best_j in seen:
-                        break
-                    seen.add(best_j); uniq.append(best_j)
-                picked = [int(cand[j]) for j in sorted(uniq)]
-        for fi in picked[:k]:
-            selection.append({"segment": name, "frame_idx": int(fi)})
-        print(f"{name:18s} {lo:5d}..{hi:5d}  picked {len(picked[:k])}: "
-              f"{[s for s in picked[:k]]}")
+            tot = float(cum[-1])
+            targets = (np.linspace(0, tot, k) if tot > 1e-6
+                       else np.linspace(0, len(cand) - 1, k))
+            base = ([int(np.clip(np.searchsorted(cum, t), 0, len(cand) - 1))
+                     for t in targets] if tot > 1e-6
+                    else [int(round(t)) for t in targets])
+            # snap each base pick to the locally sharpest candidate
+            snapped, seen = [], set()
+            for j in base:
+                lo_j, hi_j = max(0, j - SHARP_SNAP), min(len(cand), j + SHARP_SNAP + 1)
+                local = cand[lo_j:hi_j]
+                best = int(local[int(np.argmax(sharp[local]))])
+                jj = int(np.where(cand == best)[0][0])
+                if jj not in seen:
+                    seen.add(jj)
+                    snapped.append(jj)
+            # fill if dedup shrank: largest-gap midpoints
+            while len(snapped) < k:
+                s = sorted(snapped)
+                gaps = [(b - a, (a + b) // 2) for a, b in zip(s[:-1], s[1:])]
+                if not gaps:
+                    break
+                _, mid = max(gaps)
+                if mid in seen:
+                    break
+                seen.add(mid)
+                snapped.append(mid)
+            picked = sorted(int(cand[j]) for j in snapped[:k])
+        for fi in picked:
+            selection.append({"segment": name, "frame_idx": int(fi),
+                              "sharp": round(float(sharp[fi]), 1)})
+        print(f"{name:12s} [{lo:4d},{hi:4d}) valid={len(cand):3d} -> {len(picked)}: {picked}")
 
-    # If short, top up; if over, trim (shouldn't happen).
-    if len(selection) != 30:
-        print(f"WARN: total selected = {len(selection)} (expected 30)")
-
-    # Pass C: extract full-res frames and build contact sheet
-    want = sorted({s["frame_idx"] for s in selection})
-    cap = cv2.VideoCapture(str(VIDEO))
+    selection.sort(key=lambda s: s["frame_idx"])
+    targets = [s["frame_idx"] for s in selection]
     seg_of = {s["frame_idx"]: s["segment"] for s in selection}
-    frame_imgs = {}
-    for fi in want:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, fi)
+    print(f"\ntotal curated: {len(selection)}")
+
+    # ---- Pass 2: sequential extract + hash-verify against Stage-0 canon ----
+    for p in img_dir.glob("*.png"):
+        p.unlink()
+    cap = cv2.VideoCapture(str(video))
+    want = sorted(targets)
+    ni = 0
+    fi = 0
+    imgs = {}
+    matches = 0
+    hash_report = []
+    while ni < len(want):
         ok, fr = cap.read()
         if not ok:
-            print(f"WARN failed to read {fi}")
-            continue
-        seg = seg_of[fi]
-        p = FRAMES / f"seg_{seg}_f{fi:05d}.png"
-        cv2.imwrite(str(p), fr, [cv2.IMWRITE_PNG_COMPRESSION, 3])
-        frame_imgs[fi] = fr
-        print(f"  saved {p.name}")
+            break
+        if fi == want[ni]:
+            h = frame_sha1(fr)
+            ok_h = (canon_sha.get(fi) == h)
+            matches += int(ok_h)
+            hash_report.append({"idx": fi, "match": ok_h})
+            cv2.imwrite(str(img_dir / f"f{fi:05d}.png"), fr,
+                        [cv2.IMWRITE_PNG_COMPRESSION, 3])
+            imgs[fi] = fr
+            ni += 1
+        fi += 1
     cap.release()
+    print(f"hash-verify vs Stage-0 canonical: {matches}/{len(want)} match")
 
-    # Build 5x6 grid (5 rows, 6 cols). Order: by segment, then by frame_idx.
-    seg_order = [s[0] for s in SEGMENTS]
-    sel_sorted = sorted(selection,
-                        key=lambda s: (seg_order.index(s["segment"]),
-                                       s["frame_idx"]))
-    cols, rows = 6, 5
-    THUMB_W = 480
-    THUMB_H = int(round(THUMB_W * 1080 / 1920))  # 270
-    LABEL_H = 40
-    cell_w = THUMB_W
-    cell_h = THUMB_H + LABEL_H
-    canvas = np.full((rows * cell_h, cols * cell_w, 3), 245, dtype=np.uint8)
-    seg_color = {
-        "blade":            (60, 60, 240),
-        "glottis":          (40, 200, 240),
-        "subglottic":       (90, 220, 90),
-        "trachea":          (220, 160, 50),
-        "transition_tube":  (240, 90, 200),
-    }
+    # ---- contact sheet ----
+    cols = 6
+    rows = (len(selection) + cols - 1) // cols
+    tw, th, lh = 480, 270, 40
+    canvas = np.full((rows * (th + lh), cols * tw, 3), 245, np.uint8)
     font = cv2.FONT_HERSHEY_SIMPLEX
-    for idx, s in enumerate(sel_sorted[:rows * cols]):
+    for idx, s in enumerate(selection):
         fi = s["frame_idx"]
-        seg = s["segment"]
-        r = idx // cols; c = idx % cols
-        y0 = r * cell_h; x0 = c * cell_w
-        img = frame_imgs.get(fi)
-        if img is None:
+        r, c = divmod(idx, cols)
+        yy, xx = r * (th + lh), c * tw
+        im = imgs.get(fi)
+        if im is None:
             continue
-        t = cv2.resize(img, (THUMB_W, THUMB_H), interpolation=cv2.INTER_AREA)
-        canvas[y0:y0 + THUMB_H, x0:x0 + THUMB_W] = t
-        ly0 = y0 + THUMB_H
-        canvas[ly0:ly0 + LABEL_H, x0:x0 + cell_w] = seg_color[seg]
-        txt = f"{seg}  f{fi:05d}"
-        cv2.putText(canvas, txt, (x0 + 10, ly0 + 28),
-                    font, 0.75, (255, 255, 255), 2, cv2.LINE_AA)
-        cv2.rectangle(canvas, (x0, y0), (x0 + cell_w - 1, y0 + cell_h - 1),
-                      (50, 50, 50), 1)
-    out_png = OUT / "contact_30.png"
-    cv2.imwrite(str(out_png), canvas, [cv2.IMWRITE_PNG_COMPRESSION, 6])
-    print(f"contact sheet: {canvas.shape} -> {out_png}")
+        canvas[yy:yy + th, xx:xx + tw] = cv2.resize(im, (tw, th), interpolation=cv2.INTER_AREA)
+        canvas[yy + th:yy + th + lh, xx:xx + tw] = SEG_COLOR.get(s["segment"], (120, 120, 120))
+        cv2.putText(canvas, f"{s['segment']} f{fi:05d}", (xx + 8, yy + th + 28),
+                    font, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
+        cv2.rectangle(canvas, (xx, yy), (xx + tw - 1, yy + th + lh - 1), (50, 50, 50), 1)
+    cv2.imwrite(str(out / "contact_curated.png"), canvas, [cv2.IMWRITE_PNG_COMPRESSION, 6])
 
+    n_sub = sum(1 for s in selection if s["segment"].startswith("subglot"))
     summary = {
-        "video": str(VIDEO),
-        "segments": [
-            {"name": n, "lo": lo, "hi": hi, "count": k}
-            for (n, lo, hi, k) in SEGMENTS
-        ],
-        "selection": sel_sorted,
-        "frame_dir": str(FRAMES),
-        "contact_path": str(out_png),
-        "n_selected": len(selection),
-        "diff_proxy": "consecutive-valid-frame absdiff at 1/{} grayscale".format(DIFF_DS),
-        "cylinder_inner_diameter_mm": 4.0,
-        "transition_range": [3300, 3469],
-        "user_note": "blade<->glottis disjoint; subglottic is f80..700; trachea f700..3300; transition+tube f3300..3484 (12 frames, ~3 inside tube)",
+        "video": str(video), "n_curated": len(selection),
+        "windows": [{"name": n, "lo": lo, "hi": hi, "count": k}
+                    for (n, lo, hi, k) in DEFAULT_WINDOWS],
+        "selection": selection,
+        "subcord_frames": [s["frame_idx"] for s in selection
+                           if s["segment"].startswith("subglot")],
+        "n_subcord": n_sub,
+        "hash_verify": {"matches": matches, "total": len(want),
+                        "all_match": matches == len(want),
+                        "detail": hash_report},
+        "images_dir": str(img_dir), "contact": str(out / "contact_curated.png"),
+        "extraction": "SEQUENTIAL cv2.read() (no POS_FRAMES)",
+        "selection_method": "equal-cumulative-motion + Laplacian-sharpness snap",
     }
-    (OUT / "stage1_selection.json").write_text(json.dumps(summary, indent=2))
-    print(f"saved {OUT/'stage1_selection.json'}")
+    (out / "stage1_selection.json").write_text(json.dumps(summary, indent=2))
+    print(f"\n=== STAGE 1: {len(selection)} frames, {n_sub} sub-cord, "
+          f"hash {matches}/{len(want)} -> {out}")
 
 
 if __name__ == "__main__":
