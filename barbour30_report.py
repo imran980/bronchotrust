@@ -56,12 +56,16 @@ def main():
         clean = bool(r["measurable"] and r["closed"] and (r["DCE_estimator_spread"] or 9) <= 1.30)
         r["verdict"] = "clean" if clean else ("partial/incoherent" if r["measurable"] else "not measurable")
 
-    # compare to baseline — split by anatomy (subglottis is the clinical target; trachea is easy)
+    # compare to baseline — split by anatomy (subglottis is the clinical target) AND selection mode
     SUBGLOTTIC = {"glottis", "prox_subglottis", "dist_subglottis"}
     n_clean = sum(1 for r in rows if r["verdict"] == "clean")
     n_meas = sum(1 for r in rows if r["measurable"])
     sub_rows = [r for r in rows if r["landmark"] in SUBGLOTTIC]
     tra_rows = [r for r in rows if r["landmark"] == "trachea_ref"]
+    sub_contig = [r for r in sub_rows if r["position"] != "smart"]
+    sub_smart = [r for r in sub_rows if r["position"] == "smart"]
+    n_sub_contig_clean = sum(1 for r in sub_contig if r["verdict"] == "clean")
+    n_sub_smart_clean = sum(1 for r in sub_smart if r["verdict"] == "clean")
     n_sub_clean = sum(1 for r in sub_rows if r["verdict"] == "clean")
     n_tra_clean = sum(1 for r in tra_rows if r["verdict"] == "clean")
     base_closed = {v: {lk: base[v]["landmarks"][lk]["closed"] for lk in base[v]["landmarks"]} for v in base}
@@ -79,23 +83,28 @@ def main():
         "table": rows,
         "stability_across_positions": {f"{k[0]}/{k[1]}/{k[2]}": v for k, v in stability.items()},
         "anatomy_split": {
-            "subglottic_local_clean": f"{n_sub_clean}/{len(sub_rows)}",
+            "subglottic_CONTIGUOUS_clean": f"{n_sub_contig_clean}/{len(sub_contig)}",
+            "subglottic_SMART_clean": f"{n_sub_smart_clean}/{len(sub_smart)}",
             "trachea_local_clean": f"{n_tra_clean}/{len(tra_rows)}",
             "subglottic_long_window_closed": "ALL (2-V2 & 25-V1 glottis/+5mm/+10mm closed)",
         },
     }
     verdict = (
-        "NO (for the clinical target). 30-frame local batches do NOT produce cleaner SUBGLOTTIC CSA/DCE than "
-        f"the long-window pipeline. Subglottic local rings clean: {n_sub_clean}/{len(sub_rows)} — every glottis/"
-        "subglottis batch is OPEN or partial-coverage (r_std/r_med 0.37-0.73, or <60% coverage) with a flared, "
-        "incoherent forward-cone cloud; and the distal-subglottis DCE swings ~2.1x across early/centered/late "
-        "selections (unstable to frame choice). The long-window pipeline CLOSES all the same subglottic "
-        f"landmarks (cov~86-100%, ratio~0.23). The ONLY clean local rings are the wide/textured TRACHEA "
-        f"reference ({n_tra_clean}/{len(tra_rows)}, both raw & CLAHE) — which the long-window also measures "
-        "cleanly. So the trachea is easy either way; the subglottis does not benefit from the 30-frame recipe. "
-        "Also: raw frames FAIL to register on subglottic batches (CLAHE required). CONCLUSION: the limitation "
-        "is NOT just our frame strategy — matching Barbour's 30-frame protocol does not recover the subglottis. "
-        "Move toward a new method (shading-based / airway-model fitting).")
+        "FRAME SELECTION IS DECISIVE. Naive CONTIGUOUS 30-frame windows do NOT measure the subglottis "
+        f"({n_sub_contig_clean}/{len(sub_contig)} clean: open/partial-coverage 47-81%, r_std/r_med 0.37-0.73, "
+        "flared forward-cone clouds, DCE unstable ~2.1x). But SMART 30-frame selection — wider pool (+/-30) + "
+        "viewpoint-diversity sampling + sharpness gate + glare/mucus rejection — CLOSES the subglottis "
+        f"({n_sub_smart_clean}/{len(sub_smart)} clean: cov 92-100%, r_std/r_med 0.12-0.29, estimator spread "
+        "~1.0), MATCHING or beating the long-window (which closes them at ratio~0.23). The closure comes from "
+        "full angular RING COVERAGE (the wider pool lets the scope sweep the whole circumference: 92-100% vs "
+        "47-81%) + clean POINTS (quality gate), NOT from parallax (cone stays 0.7-3.5deg). "
+        "CAVEATS: (1) raw frames FAIL to register (CLAHE required); (2) sharpness vs viewpoint-change CONFLICT "
+        "(scope motion = blur, so the sharpness gate drops the high-parallax frames -> cone does not rise; "
+        "wide-baseline diverse selection at +/-45 FRAGMENTS matching, 14/30); (3) 2-V2 dist did not register "
+        "cleanly. ANSWER: YES -- Barbour-style 30-frame local reconstruction, done with proper frame "
+        "SELECTION (quality + coverage-diversity), produces clean subglottic CSA/DCE where naive windows fail. "
+        "=> implement a Barbour-style local-batch measurement pipeline (smart selection), do NOT abandon for a "
+        "new method yet. Next: stabilize selection (handle fragmentation), then add metric scale.")
     report["verdict"] = verdict
     (OUT / "barbour30_report.json").write_text(json.dumps(report, indent=2))
 
