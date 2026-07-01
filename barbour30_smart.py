@@ -150,8 +150,8 @@ def extract_list(vk, frames, bdir, preproc="clahe"):
     cap.release(); return img, msk, n
 
 
-def recon(vk, landmark, info, preproc="clahe"):
-    name = f"{vk}_{landmark}_smart_{preproc}"
+def recon(vk, landmark, info, preproc="clahe", name=None):
+    if name is None: name = f"{vk}_{landmark}_smart_{preproc}"
     bdir = OUT / "batches" / name; bdir.mkdir(parents=True, exist_ok=True)
     sess = LANDMARKS[vk]["session"]; pstr = ",".join(f"{p:.10g}" for p in json.loads((CAL / sess / "intrinsics_pinned.json").read_text())["params_colmap"])
     img, msk, nfr = extract_list(vk, info["frames"], bdir, preproc)
