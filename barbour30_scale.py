@@ -22,7 +22,16 @@ PHYS = {"parsons_size2_aperture_vertical_mm": 13.0, "parsons_size2_aperture_hori
         "parsons_size2_length_mm": 90.0, "hopkins_OD_mm": 4.0, "hopkins_working_length_mm": 300.0,
         "hopkins_OD_4cm_is_typo": True}
 
-BLADE_VISIBLE = {"2-V2": False, "25-V1": False, "32-V2": False}   # from visual + metallic scan
+# CORRECTED (user caught the earlier error): metal IS present in the cohort. Ruler chosen by
+# user = the visible Hopkins telescope SHAFT outer diameter (4 mm); do NOT use the tube inner
+# bore unless measured; do NOT use Parsons 13x15 unless the slot is visible+reconstructed in
+# the same model. Metal presence (improved grey/low-sat detector + visual):
+METAL_PRESENT = {
+    "2-V2": "4mm rod/shaft at f8-45 (thin, specular, MOVING)",
+    "5_v1_2": "large metal TUBE bore (scope inside it)", "10_v2": "metal TUBE bore",
+    "13_v2": "metal TUBE (white-out)", "15_v2": "metal TUBE/aperture rim",
+    "5_v1_1": "thin rod", "7-V1": "thin bright rim",
+    "25-V1": "none usable", "32-V2": "none usable"}
 
 
 def main():
@@ -36,42 +45,56 @@ def main():
         csa_scene = None
         if mj.exists():
             m = json.loads(mj.read_text()); csa_scene = (m.get("CSA_scene") or {}).get("polar")
-        note = ("glottis is an aperture (cord plane), not a tube ring" if lm == "glottis"
-                else "monocular gauge-free; this local batch has its own arbitrary scale")
+        if lm == "glottis":
+            note = "glottis is an aperture (cord plane), not a tube ring"
+        elif v == "2-V2":
+            note = "4mm rod IS visible but MOVING+specular -> not reconstructable as a cylinder; no anchor"
+        else:
+            note = "no rod/blade anchor in the airway-connected model -> scene units"
         out_rows.append({
             "video": v, "landmark": lm, "local_DCE_scene": r.get("DCE_polar"),
             "local_CSA_scene": csa_scene, "scale_source": "unavailable",
             "scale_mm_per_unit": None, "DCE_mm": None, "CSA_mm2": None,
-            "scale_validity": "NOT VALID (no known-size object imaged; no Sim(3) bridge)",
+            "scale_validity": "NOT VALID (no static known-size object in a connected stable model)",
             "notes": note})
     scale_source_breakdown = {
         "direct_blade_in_same_model": 0, "global_to_local_Sim3_transfer": 0,
         "unavailable": len(out_rows)}
     report = {
         "physical_dimensions_mm": PHYS,
-        "hopkins_OD_confirmation": "'4 cm' is a TYPO -> 4 mm (40 mm exceeds the trachea; CT DCE was 2-6 mm). "
-                                   "Telescope images forward, so its own shaft is never in frame -> OD/length "
-                                   "cannot be used as an in-image scale object.",
-        "blade_search": {
-            "task1_frames_with_parsons_aperture": "NONE in 2-V2 / 25-V1 / 32-V2. Entry frames (video start->"
-                "glottis) show laryngeal ANATOMY only (epiglottis = smooth pale curved mucosa; vocal cords = "
-                "dark vertical slit); no rigid metal 13x15mm aperture rim. Quantitative metallic scan (bright "
-                "V>230 & low-sat S<45): no persistent large blob (2-V2 max 4.4%, 25-V1 6.6%; 32-V2 bright "
-                "frames are DEEP specular glare, not the entry aperture).",
-            "task2_blade_airway_same_model": "N/A — no blade to reconstruct.",
-            "task3_13_15mm_scale": "cannot apply — aperture not imaged.",
-            "task4_global_Sim3_transfer": "no blade in any potential global model to anchor absolute mm; and a "
-                "connected model spanning entry->deep subglottis fragments/collapses in these low-parallax "
-                "videos (see 16v1-ct-validation, long-window audits) — so no absolute-mm bridge is available.",
-            "task6_hopkins_shaft": "not visible/reconstructed (forward-imaging) -> working length NOT used.",
+        "CORRECTION": "Earlier claim 'no metal visible' was WRONG (user caught it). Metal IS present across the "
+                      "cohort — see METAL_PRESENT. My first metallic scan thresholded bright-white specular "
+                      "(V>230) and missed dull-grey metal; corrected detector (low-sat grey S<55 & V>135) finds "
+                      "large metal TUBES in 5_v1_2/10_v2/13_v2/15_v2 and a thin 4mm rod in 2-V2.",
+        "chosen_ruler": "Visible Hopkins telescope SHAFT outer diameter = 4 mm (user). Do NOT use tube inner "
+                        "bore unless measured; do NOT use Parsons 13x15 unless the slot is visible+reconstructed "
+                        "in the same model. '4 cm' OD confirmed a TYPO -> 4 mm.",
+        "metal_present": METAL_PRESENT,
+        "scale_attempts": {
+            "2-V2_rod_reconstructability": "FAILS. The rod-visible segment f0-60 reconstructs (61/61, 1 model) "
+                "but the 4mm rod does NOT form a fittable cylinder: metallic (grey) points are scattered through "
+                "the tissue (radial IQR/median 1.52; a rod shell would be ~0.1-0.3). ROOT CAUSE: the rod is a "
+                "MOVING instrument (metal centroid sweeps cy 0.44->0.75, area 1%->7.5% over f5-45) -> SfM cannot "
+                "reconstruct a non-static object, and it is specular. => the 4mm OD cannot be measured.",
+            "2-V2_global_bridge": "MOOT. Even if a connected rod->subglottis model existed, the moving/specular "
+                "rod is not measurable, so no 4mm anchor can be fit. (Bridge would also have to span ~880 frames "
+                "through the low-parallax cords, which fragments — see prior audits.) -> scale UNAVAILABLE.",
+            "tube_videos (5_v1_2/10_v2/13_v2/15_v2)": "the visible metal there is the tube INNER BORE, not the "
+                "4mm Hopkins shaft; user said do NOT use the bore unless its diameter is measured. A 10_v2 "
+                "tube->airway test fragmented (40/91, 3 models) and the points do not form a clean cylinder. "
+                "Not usable as the 4mm ruler.",
+            "25-V1 / 32-V2": "no scale anchor (rod/blade) appears in the airway-connected model -> scene units.",
+            "hopkins_working_length": "not used — the scope shaft is a moving instrument, not a static "
+                "reconstructed object (rule 6).",
         },
         "scale_source_breakdown": scale_source_breakdown,
-        "verdict": "ABSOLUTE mm NOT VALID for any accepted ring. The only candidate scale object (Parsons "
-                   "aperture) is not imaged; the Hopkins telescope cannot self-image. All accepted DCE/CSA "
-                   "remain in SCENE UNITS. NOTE: because each accepted ring is a SEPARATE local 30-frame batch "
-                   "with its own gauge, the rings are not even mutually comparable in scale -> a Sim(3) bridge "
-                   "to a common (long-window) model would be needed for scale-free %-obstruction (A_min/A_ref), "
-                   "though that yields COMMON-RELATIVE scale, still not mm without a visible blade.",
+        "verdict": "ABSOLUTE mm STILL NOT VALID for any accepted ring — but now for the CORRECT reason: the 4mm "
+                   "Hopkins shaft IS visible (2-V2) yet is a MOVING, specular instrument that SfM cannot "
+                   "reconstruct into a fittable cylinder, so no 4mm anchor can be measured in a connected model; "
+                   "25-V1/32-V2 have no anchor at all. Per the rule (no cross-batch/cross-video transfer; anchor "
+                   "must be in ONE connected stable model), scale = unavailable -> all DCE/CSA stay SCENE UNITS. "
+                   "A valid mm anchor would need a STATIC known-size object (a held-still shaft, or the Parsons "
+                   "slot) imaged in the SAME connected pass as the airway ring.",
         "table": out_rows,
     }
     (OUT / "scale_report.json").write_text(json.dumps(report, indent=2))
@@ -83,8 +106,11 @@ def main():
     for r in out_rows:
         print(" | ".join(str(r.get(c)) for c in cols))
     print("\nscale source breakdown:", json.dumps(scale_source_breakdown))
-    print("Hopkins OD '4cm' -> TYPO, correct = 4 mm. Telescope cannot self-image (rule 6 upheld).")
-    print("VERDICT: absolute mm NOT valid (no blade imaged) -> DCE stays scene-units.")
+    print("Hopkins OD '4cm' -> TYPO, correct = 4 mm. Ruler = visible 4mm Hopkins SHAFT (user).")
+    print("2-V2: 4mm rod IS visible but is a MOVING, specular instrument -> not reconstructable as a cylinder")
+    print("      (metallic pts scattered, radial IQR/median 1.52; centroid sweeps) -> 4mm not measurable.")
+    print("25-V1/32-V2: no rod/blade anchor in a connected model.")
+    print("VERDICT: absolute mm NOT valid (no STATIC known-size object in a connected model) -> scene units.")
     print(f"report -> {OUT}/scale_report.json")
 
 
