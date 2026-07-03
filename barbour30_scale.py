@@ -79,22 +79,27 @@ def main():
             "2-V2_global_bridge": "MOOT. Even if a connected rod->subglottis model existed, the moving/specular "
                 "rod is not measurable, so no 4mm anchor can be fit. (Bridge would also have to span ~880 frames "
                 "through the low-parallax cords, which fragments — see prior audits.) -> scale UNAVAILABLE.",
-            "tube_videos (5_v1_2/10_v2/13_v2/15_v2)": "the visible metal there is the tube INNER BORE, not the "
-                "4mm Hopkins shaft; user said do NOT use the bore unless its diameter is measured. A 10_v2 "
-                "tube->airway test fragmented (40/91, 3 models) and the points do not form a clean cylinder. "
-                "Not usable as the 4mm ruler.",
+            "tube_bore_path (10_v2, the only CALIBRATED tube video)": "TESTED end-to-end and FAILS at "
+                "reconstructability: (a) bore surface (f36-75, 741 metal pts) scatters, radial IQR/med=1.00 -> "
+                "NOT a cylinder; (b) tube RIM (f0-35, cone 39.3deg so cameras are fine) gives only 45 scattered "
+                "metal pts, radius IQR/med=1.27, not planar -> NOT a circle. Specular/overexposed metal yields "
+                "no stable multi-view features. The other tube videos (5_v1_2/13_v2/15_v2) have NO calibration. "
+                "Even if it reconstructed, the bore's true mm ID is an external unknown (user forbids using it "
+                "unmeasured) and it must connect to a measurable airway ring across the fragmenting larynx.",
             "25-V1 / 32-V2": "no scale anchor (rod/blade) appears in the airway-connected model -> scene units.",
             "hopkins_working_length": "not used — the scope shaft is a moving instrument, not a static "
                 "reconstructed object (rule 6).",
         },
         "scale_source_breakdown": scale_source_breakdown,
-        "verdict": "ABSOLUTE mm STILL NOT VALID for any accepted ring — but now for the CORRECT reason: the 4mm "
-                   "Hopkins shaft IS visible (2-V2) yet is a MOVING, specular instrument that SfM cannot "
-                   "reconstruct into a fittable cylinder, so no 4mm anchor can be measured in a connected model; "
-                   "25-V1/32-V2 have no anchor at all. Per the rule (no cross-batch/cross-video transfer; anchor "
-                   "must be in ONE connected stable model), scale = unavailable -> all DCE/CSA stay SCENE UNITS. "
-                   "A valid mm anchor would need a STATIC known-size object (a held-still shaft, or the Parsons "
-                   "slot) imaged in the SAME connected pass as the airway ring.",
+        "verdict": "ABSOLUTE mm NOT VALID for any accepted ring. Tested BOTH candidate rulers: the 2-V2 4mm rod "
+                   "(MOVING+specular -> not reconstructable) AND the 10_v2 rigid tube bore/rim (STATIC but "
+                   "specular/overexposed -> scatters, IQR/med 1.0-1.3, not a fittable cylinder or circle, though "
+                   "the cameras reconstruct fine at cone 39deg). Across rod+bore+rim the specular metal never "
+                   "forms a measurable geometric primitive -> no metric ruler obtainable via feature-SfM. All "
+                   "DCE/CSA stay SCENE UNITS. TWO paths to real mm: (1) an EDGE/SILHOUETTE-based rim-fitting "
+                   "method (use the good camera poses to triangulate the tube-rim EDGE instead of surface "
+                   "features) PLUS the tube's confirmed physical ID; (2) a deliberate re-capture imaging a MATTE "
+                   "known-size object held STATIC in the same pass as the airway. Both are new development.",
         "table": out_rows,
     }
     (OUT / "scale_report.json").write_text(json.dumps(report, indent=2))
