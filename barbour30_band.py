@@ -17,7 +17,8 @@ from batch_render import section as br_section
 
 OUT = "/home/mi3dr/projects/bronchotrust/runs/barbour30"
 CFG = {"2-V2":  dict(Rdir="runs/batch4/2-V2",  sten_zone=(1003, 1036), ref_zone=(1055, 1140), label="2-V2"),
-       "25-V1": dict(Rdir="runs/batch4/25-V1", sten_zone=(348, 462),   ref_zone=(476, 596),  label="25-V1")}
+       "25-V1": dict(Rdir="runs/batch4/25-V1", sten_zone=(348, 462),   ref_zone=(476, 596),  label="25-V1"),
+       "32-V2": dict(Rdir="runs/fuse_32v2",    sten_zone=(320, 415),   ref_zone=(445, 525),  label="32-V2")}
 COVOK, RATIOOK = 0.90, 0.35
 
 
