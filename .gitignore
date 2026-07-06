@@ -27,3 +27,26 @@ output/
 
 # Archived legacy assets (preserved on disk, also in pre-gluemap-checkpoint branch)
 _archive/
+
+# COLMAP databases + sqlite WAL
+*.db
+*.db-shm
+*.db-wal
+
+# Videos / large media (provided externally)
+*.mp4
+*.MP4
+*.mov
+*.MOV
+*.avi
+*.mkv
+
+# Model checkpoints / weights
+*.pth
+*.ckpt
+*.safetensors
+*.bin
+
+# --- intentionally-tracked lightweight docs assets (override *.png / runs rules above) ---
+!docs/figures/
+!docs/figures/*.png

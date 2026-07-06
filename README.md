@@ -1,172 +1,172 @@
-# bronchotrust
+# bronchotrust — Barbour-style COLMAP airway reconstruction (baseline)
 
-**An uncertainty-aware monocular bronchoscopy reconstruction pipeline using
-MASt3R-based two-view geometric priors with learned + anatomy-anchored scale
-recovery, evaluated quantitatively on synthetic and phantom data and
-demonstrated as a clinical feasibility study for pediatric subglottic-stenosis
-sizing on four paired CT–bronchoscopy cases.**
+Monocular pediatric-airway (bronchoscopy/laryngoscopy) 3D reconstruction and
+**scale-free % obstruction** measurement from clinical video, using COLMAP
+Structure-from-Motion + Multi-View Stereo with **smart local-batch frame selection**.
 
-# Use implementation from 
-https://lpanaf.github.io/cvpr26_gluemap/
+This tag (`barbour-style-colmap-baseline`) is the frozen, working COLMAP baseline. It is a
+research feasibility pipeline, **not** a validated clinical tool — see
+[Known limitations](#known-limitations).
 
-# 15_v2 — From-Scratch Gated Plan + Agent-Verification Guide
-
-**Goal:** a defensible **scale-free Myer–Cotton % obstruction** on 15_v2 (the one parallax-viable video). Absolute mm in diameter is deferred to a blade-gated stage at the end, because it needs an external fact (Barbour's blade spec) you don't have yet — the *grade* does not.
-
-**How to use this:** run ONE stage, the agent STOPs, then **you run the VERIFY block before approving.** If a VERIFY check fails, do not proceed — paste the failure back and we fix it. The agent's summary is *not* evidence; the cross-checks are.
+> The next method (texture-free silhouette/shading lumen fitting, using COLMAP poses only as
+> initialization) is scoped separately in [`NEW_METHOD_SCOPE.md`](NEW_METHOD_SCOPE.md).
 
 ---
 
-## Locked decisions (baked in — do NOT let the agent relitigate these)
+## Pipeline overview
 
-These were each established with evidence. If the agent re-proposes any of them as a "new idea," that's a red flag that it has lost the context.
+```
+video ─► smart frame selection ─► COLMAP SfM (pinned intrinsics, exhaustive)
+      ─► dense MVS ─► airway point cloud ─► medial-axis centerline
+      ─► perpendicular cross-sections ─► CSA / DCE per ring
+      ─► (one connected model) scale-free % obstruction
+```
 
-1. **Intrinsics are pinned**, never refined. OPENCV model; `ba_refine_focal_length=0`, `ba_refine_extra_params=0`. Fisheye was rejected (its high-order coefficients explode and undistort to a blank frame).
-2. **Calibration video gives intrinsics, NOT transferable scale.** A board clip scales only its own reconstruction, not the bronchoscopy clip. Do not attempt checkerboard scale transfer.
-3. **Measure on the dense MVS cloud, not the Poisson mesh** (Poisson extent was 24–69% non-reproducible).
-4. **Slice at centerline points, NOT at camera positions** (the forward scope images the wall ahead of itself; the ring at point *p* comes from the camera that sat behind *p*).
-5. **Scale-free % obstruction = area ratio**, which is scale-invariant. This is the deliverable. No scale anchor is required for the grade.
-6. **No SfM method or fit function overcomes zero parallax.** Don't chase GLUEMAP / different matchers / cylinder-vs-circle to fix a low-parallax video — it's information-theoretic, not algorithmic.
+Two things learned the hard way, baked into the design:
 
-## Known agent failure signatures (watch for these every stage)
+- **Frame SELECTION is the decisive lever.** Naive contiguous 30-frame windows fail the
+  low-texture subglottis; *smart* selection — CLAHE + sharpness/glare/contrast gating +
+  viewpoint-coverage-diversity sampling + adaptive pool (±30 → ±20 → ±45) — closes clean
+  subglottic ring **shapes** where naive windows cannot (8/12 landmarks accepted;
+  proximal subglottis 3/3 reproducible across videos).
+- **COLMAP nails poses; the dense wall is the weak link.** Feature-SfM/MVS needs texture, and
+  the airway wall is textureless/specular. Rings are measured on the **dense MVS cloud**
+  (not the Poisson mesh), sliced **at centerline points** (a forward scope images the wall
+  *ahead* of itself), with three CSA estimators that must agree.
 
-- Uses `cap.set(CAP_PROP_POS_FRAMES)` for extraction → frame-index drift on H.264. **Demand sequential `cap.read()` + a hash check.**
-- Calls a video "corrupted" when the ffmpeg errors are all *non-monotonic DTS muxer warnings* (cosmetic) → not corruption.
-- Reports a frame "failed to register" when it actually registered in a *different sub-model* → connectivity confusion.
-- Saves the wrong (smaller) sub-model as the result → check it kept the largest one covering the target region.
-- Reports a **plausible-looking number with no validity check** (the 4 mm / 30-frame trap). Plausible ≠ correct.
-- Reports a % obstruction from slices at a *bend* or with area estimators that disagree 10–100× → garbage.
-
----
-
-## STAGE 0 — Integrity + sequential frame extraction
-**Prompt to agent:**
-```
-15_v2 integrity + extraction. STOP at end. NO reconstruction.
-1. ffmpeg full decode: `ffmpeg -v error -i 15_v2.mp4 -f null -`. Classify each error line:
-   DTS/non-monotonic = cosmetic; "corrupt"/"concealing"/"error while decoding" = real.
-2. Decode ALL frames SEQUENTIALLY with cv2.read() (NOT cap.set(POS_FRAMES)). Report decodable
-   count vs container-claimed, # black frames, # frozen runs.
-3. Extract all frames sequentially to disk; save a frame_stats.json (idx, L_mean, valid).
-STOP. Report: decodable count, real-vs-cosmetic error split, black/frozen counts.
-```
-**VERIFY (catch the agent):**
-- Real errors should be **0 or only a few tail frames** (15_v2 is intact per your integrity check). If it reports "corrupted," confirm the errors are DTS-only — if so, it's wrong.
-- It must say it used **sequential read**, not POS_FRAMES. If it used POS_FRAMES, reject — indices will be wrong downstream.
-- Frozen-run count should be ~0 in the working range. A long frozen run = a real defect; investigate.
-
-## STAGE 1 — Full-video contact sheet → you label → curate frames
-**Prompt to agent:**
-```
-15_v2 frame triage. STOP at end.
-1. Contact sheet of the FULL video (every ~15th valid frame), each thumb labeled with its
-   sequential frame index. No classifier.
-STOP. I will mark ranges: glottis / subglottis / trachea / any instrument.
-```
-*(After you label, second prompt:)*
-```
-Select 35-40 curated frames spanning glottis -> subglottis -> upper trachea, with DENSE
-sampling through the sub-cord descent (that's the clinical region). Save a labeled 5xN contact
-sheet, each thumb = my segment + sequential index. Hash-verify each saved frame matches the
-canonical sequential frame at that index (report matches/total).
-STOP.
-```
-**VERIFY:**
-- **Eyeball the contact sheet yourself.** Confirm the sub-cord descent is densely sampled, frames are in focus (not mucus/blur), and labels match what you see.
-- Hash-verify result must be **N/N matches**. Anything less = index drift; reject.
-- Confirm frames look like 15_v2's anatomy (sanity that the right file was used).
-
-## STAGE 2 — Pinned intrinsics + distortion model
-**Prompt to agent:**
-```
-15_v2 intrinsics. STOP at end.
-Load 15_v2's per-session calibration video. Run cv2.calibrateCamera (OPENCV) AND
-cv2.fisheye.calibrate. Report for each: RMS, fx, fy, cx, cy, distortion, implied H/V FOV.
-Save an undistortion side-by-side (OPENCV | FISHEYE) on one board frame.
-Recommend a model and write intrinsics_pinned.json.
-STOP.
-```
-**VERIFY:**
-- RMS **< 0.5 px** (you have a strict-pass threshold). If the only calibration video is marginal, flag it.
-- **fx/fy ratio ≈ 1.000–1.002** (isotropic). A ratio like 1.2 means BA contamination — should not happen if pinned.
-- **FOV ≈ 96–98°** for this scope. ~50° would be the old focal-length bug.
-- **Expected: OPENCV wins on stability even if fisheye RMS is marginally lower.** Fisheye's k3/k4 should be large with alternating signs (that's *why* we reject it). If the agent recommends fisheye and its coefficients are small/stable, double-check — but the eject criterion is the undistortion blowing up.
-
-## STAGE 3 — Parallax gate (the make-or-break pre-check, cheap)
-**Prompt to agent:**
-```
-15_v2 parallax gate. Diagnostic only - SfM POSES, no MVS, no mesh. STOP at end.
-Lightweight recon on the Stage-1 curated frames: SuperPoint+LightGlue + COLMAP mapper, pinned
-intrinsics, init_min_tri_angle=4. Report: # registered; viewing-cone total angular extent
-(max pairwise optical-axis angle) over the SUB-CORD cameras; camera position bbox; lateral/along
-translation ratio.
-STOP.
-```
-**VERIFY (this gate decides everything):**
-- Sub-cord viewing-cone extent should be **~17°** (triage said 17.51°) and **lateral/along > 0.30** (triage: 7.15).
-- **If the cone comes back < 5°, STOP the whole plan** — 15_v2 is NOT viable after all, the triage was on different/garbage frames, and reconstruction cannot work. (This is exactly the 2.1° failure that killed 2_v2.)
-- Cross-check: this number should *roughly match the triage's 17.5°*. A big mismatch means the triage and this run used different frames — find out which is right before spending MVS.
-- **Honest caveat:** passing this gate is necessary, not sufficient. Coverage at Stage 5 can still fail.
-
-## STAGE 4 — Full reconstruction + connectivity + eyeball
-**Prompt to agent:**
-```
-15_v2 reconstruction. STOP at end.
-SuperPoint+LightGlue, exhaustive matcher, COLMAP mapper init_min_tri_angle=4, min_num_matches=8,
-intrinsics PINNED from intrinsics_pinned.json (ba_refine_focal_length=0, ba_refine_extra_params=0).
-Manual init pair from a sub-cord frame. MVS dense. (Poisson for VIEWING ONLY.)
-Report: registered/N, sparse, dense, mean reproj. List ALL sub-models with their point counts
-AND frame lists. State which one you kept and WHY (must be the largest covering the sub-cord frames).
-Verify final camera params == pinned (machine epsilon).
-Save a 3-view render of the DENSE MVS cloud + camera trajectory, colored along the trajectory.
-STOP.
-```
-**VERIFY:**
-- **Final intrinsics == pinned** (delta ~1e-7). If they moved, pinning failed; reject.
-- **ONE connected model covering the sub-cord frames.** If multiple sub-models, confirm it kept the **largest one that contains your sub-cord frames** — not a bigger sub-model elsewhere (the selector bug). Make it list point counts + frames for ALL sub-models.
-- **Eyeball the render:** does it look like a tube, with the trajectory running down the middle? A collapsed spike/ball = parallax problem (shouldn't happen if Stage 3 passed).
-- mean reproj err should be **~1–3 px**. Much higher = bad reconstruction.
-
-## STAGE 5 — Centerline cross-section profile (scene units) + coverage gate
-**Prompt to agent:**
-```
-15_v2 cross-section profile on the MVS cloud (NOT Poisson). Scene units. STOP at end.
-1. Centerline = smooth spline through registered camera centers, ordered by frame; resample finely.
-2. Outlier-filter the cloud (drop points far from any camera).
-3. At each centerline sample p (tangent t): slab of points around p projected perpendicular to t.
-   SLICE AT CENTERLINE POINTS, NOT CAMERAS. Coverage over 36 angular bins; keep slices >=60%.
-4. Per kept slice compute area THREE ways - alpha-shape, convex hull, polar-median-r polygon -
-   and Deq=2*sqrt(A/pi). Report all three per slice.
-5. Output Area- and Deq-vs-arclength profiles colored by coverage%, + a 3D render of kept rings.
-STOP. Report: # measurable slices, profile, and per-slice the three area values.
-```
-**VERIFY (this is where garbage hides):**
-- **The three area estimators must AGREE within ~2×.** If alpha vs hull vs polar differ by **10–100×** (like 2_v2's 0.27 vs 26 vs bouncing), these are NOT closed rings — reject the slice; the "profile" is noise.
-- **Measurable slices must be in the sub-cord region**, not clustered at a single bend (2_v2's fake 68% came entirely from a bend).
-- Each kept slice: the **centerline point should fall inside the ring**.
-- Coverage on kept slices **≥60%**. If <60% everywhere → parallax/coverage failure (contradicts Stage 3 → investigate).
-
-## STAGE 6 — Scale-free % obstruction + clinician landmarks
-**Prompt to agent:**
-```
-15_v2 % obstruction. STOP at end.
-From the Stage-5 VALID slices only (>=60% coverage AND area estimators agreeing):
-- A_min = narrowest valid slice in the sub-cord region; A_ref = widest valid adjacent normal slice.
-- %obstruction = (1 - A_min/A_ref)*100. Report A_min, A_ref (scene units), the % , and which
-  arc-length positions / frames they correspond to.
-STOP.
-```
-**VERIFY:**
-- A_min and A_ref must both come from **validated** slices (coverage + estimator agreement). If either fails validity, the % is meaningless.
-- A_min must be **in the sub-cord region** you care about, not a bend artifact.
-- **Cross-check against ground truth:** the % should be consistent with the **surgeon's intraoperative grade** for 15_v2 (15_v2 is NOT CT-paired — 16_v1 was — so the op note / clinical grade is your ground truth). A big mismatch = the reconstruction isn't capturing the real stenosis.
-- Have the clinician confirm the landmark frames map to the right anatomy.
-
-## STAGE 7 — Absolute mm (GATED on Barbour's blade spec — do not start without it)
-Only when Barbour provides: (a) which blade dimension he uses, (b) its mm value, (c) how he locates the two endpoints. Then derive scale from the in-model blade and convert the profile to mm.
-**VERIFY:** sub-cord Deq must land in **pediatric range (single-digit mm)**. A 20 mm subglottis = wrong scale. If you ever also get a CT-paired video with a real *subglottic* (not intubated/tracheal) measurement, cross-check the blade-derived scale against it.
+### Locked design decisions
+Intrinsics are **pinned, never refined** (OPENCV model, `ba_refine_*=0`); calibration gives
+intrinsics **not** transferable scale; measure on the **dense cloud**; slice at **centerline
+points**; **% obstruction = area ratio** (scale-invariant — the primary deliverable); no SfM
+matcher overcomes low parallax (GlueMap was A/B-tested and rejected). See `CLAUDE.md`.
 
 ---
 
-### The one rule that ties it together
-For every stage, the agent must hand you a number **plus** the independent check that makes it trustworthy (a hash match, an estimator agreement, a cross-check against the triage or the surgeon's grade, an in-range sanity). A number with no check is not a result — it's a claim. Send the checks back here and I'll tell you if they actually clear.
+## Key scripts
+
+| script | purpose |
+|---|---|
+| `barbour30_smart.py`    | smart 30-frame **selection** (quality gating + coverage-diversity) |
+| `barbour_pipeline.py`   | **end-to-end** per (video, landmark): select → COLMAP → MVS → CSA/DCE, adaptive fallback |
+| `barbour30.py` / `barbour30_dense.py` / `barbour30_report.py` | sparse screen / dense+measure / report table |
+| `batch_dense.py`        | long-window **global** reconstruction (one connected model = one scale) |
+| `geometry_debug_32v2.py`/`batch_render.py` | medial-axis centerline, cross-section, organ renders |
+| `barbour30_bridge.py` / `barbour30_band.py` | scale-free **% obstruction** (global common scale, stability band) |
+| `final_ply_render.py`   | presentation renders from each video's final `.ply` |
+| `phantom_test.py` / `phantom_gt_compare.py` | phantom validation (known radius) |
+
+---
+
+## Environment
+
+Two conda envs (heavy, external to this repo):
+
+- **`depth-eval`** — Python driver: `cv2`, `pycolmap` (4.0.4), `open3d`, `numpy` 2.x, `scipy`,
+  `matplotlib`. All `barbour30_*.py` scripts run here.
+- **`colmap-cuda`** — the `colmap` binary (CUDA MVS), invoked via subprocess.
+
+```bash
+pip install -r requirements.txt          # into the depth-eval env
+# colmap binary: /home/<you>/.conda/envs/colmap-cuda/bin/colmap
+```
+
+Input videos and per-session calibration live **outside** the repo (git-ignored):
+`dataset/…` (videos) and `runs/retriage_first15/_calib/<session>/intrinsics_pinned.json`.
+
+---
+
+## How to run — smart local-batch reconstruction
+
+The main entry point runs the whole per-landmark pipeline with the adaptive fragmentation
+fallback and strict acceptance (1 connected component **and** closed ring, cov ≥ 60% &
+r_std/r_med ≤ 0.35 **and** CSA-estimator spread ≤ 1.3×):
+
+```bash
+# all videos × landmarks (glottis / prox-subglottis / dist-subglottis / trachea)
+python barbour_pipeline.py --videos 2-V2,25-V1,32-V2 --landmarks glottis,prox_subglottis,dist_subglottis,trachea_ref
+
+# one landmark (fast validation)
+python barbour_pipeline.py --videos 25-V1 --landmarks prox_subglottis
+```
+Per accepted landmark it writes `runs/barbour30/batches/<name>/`: `A_organ_cloud.png`,
+`B_centerline.png`, `landmarks.png`, `reproject_check.png`, `measure.json`; and the run
+writes `runs/barbour30/pipeline_report.json` + `pipeline_overview.png`.
+
+Supporting steps:
+```bash
+python barbour_pipeline.py ... ; python barbour30_report.py     # acceptance table
+python batch_dense.py --video 2-V2.MP4 --session 2_v2 --lo 870 --hi 1200 --out runs/batch4/2-V2   # global model
+python barbour30_bridge.py ; python barbour30_band.py            # scale-free % obstruction + stability band
+python final_ply_render.py                                       # presentation renders
+```
+
+---
+
+## Current results summary
+
+**Reconstruction (smart pipeline):** 8/12 landmarks **accepted**; **proximal subglottis 3/3**
+reproducible across `2-V2`, `25-V1`, `32-V2`. The pipeline **rejects** rather than fakes the
+hard cases (fragmentation / open rings / estimator disagreement).
+
+**Scale-free % obstruction** (area ratio, scene units, **no mm**, within-video only):
+
+| video | result | quality |
+|---|---|---|
+| **2-V2**  | **~33% area (band 24–38%)**, ~18% diameter | clean **monotonic** narrowing — trustworthy |
+| **25-V1** | ~24% area (band 21–28%) | **non-monotonic / noisy** — low confidence |
+| **32-V2** | not obtainable | global subglottic rings all noisy (r_std/r_med 0.43–0.91) |
+
+So a trustworthy scale-free % is reliable on **1 of 3 videos** today.
+
+**Phantom validation:** the pipeline recovers a known tube radius to **1.8%** — errors on real
+video are **data-limited, not algorithmic**.
+
+Example figures (in [`docs/figures/`](docs/figures)):
+`reconstructions_all_videos.png`, `landmark_rings_by_video.png`, `obstruction_2-V2.png`,
+`obstruction_band_2-V2.png`; example reports in [`docs/results/`](docs/results).
+
+![all-video reconstructions](docs/figures/reconstructions_all_videos.png)
+
+---
+
+## Known limitations
+
+- **No absolute mm scale.** Monocular SfM is gauge-free, and no static, non-specular,
+  known-size object appears in a connected model with the airway (the Hopkins shaft is a
+  *moving, specular* instrument; tube bores/rims are *specular/overexposed* and don't
+  reconstruct; the laryngoscope slot is off-screen; the telescope can't self-image). All
+  CSA/DCE are **scene units only**. Absolute mm remains **capture-protocol-gated**.
+- **No CT-paired validation completed.** The one CT-paired video (`16_v1`) reaches the carina
+  and mainstems *visually*, but its slow, dwelling (low-parallax) scope fragments/collapses in
+  SfM — no connected model, no recoverable scale — so the CT DCE comparison could not be done.
+- **Scale-free % is reliable on only 1/3 videos.** The subglottis (the clinical target) is
+  data-limited: low texture, low parallax, and partial angular coverage of the narrowest ring;
+  the reference is the *patient's own trachea*, not a normative airway — this is **not** a
+  final Myer–Cotton grade.
+- **COLMAP MVS is texture-hungry**; clean *pose* recovery does not imply a clean *wall*
+  surface. This motivates the next method (`NEW_METHOD_SCOPE.md`).
+- Some videos use **borrowed calibration** (e.g., `32-V2` borrows `32_v1`) — provisional.
+
+---
+
+## Required future data (to reach clinical validation)
+
+1. **Same-day paired video + CT** of the same airway, where the bronchoscopy **reaches and
+   reconstructs** the CT-measured region (distal trachea / mainstems), so reconstructed DCE can
+   be checked against a CT ground truth.
+2. **A valid in-frame scale anchor** — a **matte, non-specular, known-size** object (a marked
+   probe/ruler, or the laryngoscope aperture deliberately kept in view) held **static** in the
+   **same continuous pass** as the airway, so a metric scale can be recovered in one connected
+   model.
+3. **Per-video camera calibration** — a checkerboard clip from the *same scope and session*
+   (several videos currently borrow calibration).
+4. **A capture protocol built for photogrammetry** — a steady, **advancing (non-dwelling)**
+   scope for parallax; minimize overexposure, specular glare, and mucus at the target region.
+
+---
+
+## Repository notes
+
+Generated outputs (`runs/`), videos, COLMAP databases (`*.db`), MVS workspaces, raw point
+clouds (`*.ply`), and model weights are **git-ignored** and regenerable. Only source scripts,
+docs, and the lightweight example figures/reports under `docs/` are tracked. See `.gitignore`.

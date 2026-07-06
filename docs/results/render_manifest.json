@@ -1,0 +1,47 @@
+[
+  {
+    "video": "2-V2",
+    "ply_used": "runs/batch4/2-V2/dense0/fused.ply",
+    "n_points": 270798,
+    "colored": true,
+    "trajectory": true,
+    "render_folder": "runs/final_ply_renders/2-V2",
+    "notes": "COLMAP dense MVS, long-window (f870-1200)"
+  },
+  {
+    "video": "25-V1",
+    "ply_used": "runs/batch4/25-V1/dense0/fused.ply",
+    "n_points": 202026,
+    "colored": true,
+    "trajectory": true,
+    "render_folder": "runs/final_ply_renders/25-V1",
+    "notes": "COLMAP dense MVS, long-window (f315-620)"
+  },
+  {
+    "video": "32-V2",
+    "ply_used": "runs/fuse_32v2/dense0/fused.ply",
+    "n_points": 1378779,
+    "colored": true,
+    "trajectory": true,
+    "render_folder": "runs/final_ply_renders/32-V2",
+    "notes": "COLMAP dense MVS, fused 339 frames; borrowed 32_v1 calib (provisional)"
+  },
+  {
+    "video": "7-V1",
+    "ply_used": "runs/batch4/7-V1/double_poisson.ply",
+    "n_points": 358720,
+    "colored": false,
+    "trajectory": false,
+    "render_folder": "runs/final_ply_renders/7-V1",
+    "notes": "dense cloud was freed; rendered from double-Poisson MESH vertices (no RGB -> depth-colored)"
+  },
+  {
+    "video": "16_v1",
+    "ply_used": "runs/ct_validation_16v1/recon_connect/dense_m0/fused.ply",
+    "n_points": 33533,
+    "colored": true,
+    "trajectory": true,
+    "render_folder": "runs/final_ply_renders/16_v1",
+    "notes": "NOISY / low-parallax (best m0 fragment, 66 frames); shown for completeness"
+  }
+]

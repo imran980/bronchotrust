@@ -1,0 +1,74 @@
+{
+  "local_bridge_verdict": "Scale-free % obstruction NOT valid from separate local gauges: the camera Sim(3) is STABLE (CoV 0.008-0.095) but the local low-parallax batches distort ring RADIUS vs camera baseline, so ring sizes do not transfer -- cross-checked, local-bridge disagrees with global-direct (2-V2: -31% vs +50%; 25-V1: 0.9% vs 43%).",
+  "valid_path": "Measure BOTH rings in ONE connected global model (the global model AS the common scale, method 2c). No mm. Within-video only.",
+  "table": [
+    {
+      "video": "2-V2",
+      "LOCAL_gauge_bridge": {
+        "cameras_Sim3_stable": true,
+        "ring_transfer_valid": false,
+        "local_bridge_pctCSA": -31.3,
+        "note": "camera Sim(3) is stable but the bridged RING sizes are wrong (low-parallax radial distortion)"
+      },
+      "GLOBAL_common_scale(method 2c)": {
+        "stenosis": "subglottis f918",
+        "stenosis_DCE": 1.0928,
+        "stenosis_ring_ratio": 0.24,
+        "reference": "trachea f1120",
+        "reference_DCE": 1.5379,
+        "reference_ring_ratio": 0.21,
+        "rings_clean": true,
+        "DCE_ratio": 0.711,
+        "CSA_ratio": 0.505,
+        "pct_CSA": 49.5,
+        "pct_diam": 28.9,
+        "valid": true
+      },
+      "verdict": "VALID (global common scale): ~49.5% CSA obstruction (28.9% diameter). Local-gauge bridge INVALID."
+    },
+    {
+      "video": "25-V1",
+      "LOCAL_gauge_bridge": {
+        "cameras_Sim3_stable": true,
+        "ring_transfer_valid": false,
+        "local_bridge_pctCSA": 0.9,
+        "note": "camera Sim(3) is stable but the bridged RING sizes are wrong (low-parallax radial distortion)"
+      },
+      "GLOBAL_common_scale(method 2c)": {
+        "stenosis": "prox_subglottis f390",
+        "stenosis_DCE": 1.7654,
+        "stenosis_ring_ratio": 0.28,
+        "reference": "trachea f520",
+        "reference_DCE": 2.3393,
+        "reference_ring_ratio": 0.23,
+        "rings_clean": true,
+        "DCE_ratio": 0.755,
+        "CSA_ratio": 0.57,
+        "pct_CSA": 43.0,
+        "pct_diam": 24.5,
+        "valid": true
+      },
+      "verdict": "VALID (global common scale): ~43.0% CSA obstruction (24.5% diameter). Local-gauge bridge INVALID."
+    },
+    {
+      "video": "32-V2",
+      "LOCAL_gauge_bridge": {
+        "cameras_Sim3_stable": true,
+        "ring_transfer_valid": false,
+        "local_bridge_pctCSA": 34.2,
+        "note": "camera Sim(3) is stable but the bridged RING sizes are wrong (low-parallax radial distortion)"
+      },
+      "GLOBAL_common_scale(method 2c)": {
+        "stenosis": "subglottis f360/400",
+        "stenosis_DCE": 1.5423,
+        "stenosis_ring_ratio": 0.92,
+        "reference": "trachea f470",
+        "reference_DCE": 2.0494,
+        "reference_ring_ratio": 0.29,
+        "rings_clean": false,
+        "valid": false
+      },
+      "verdict": "Global subglottis ring NOISY (ratio 0.9) -> not reliably measurable; local smart ring closes it but its metric does NOT transfer -> % obstruction not obtainable for this video."
+    }
+  ]
+}
