@@ -117,6 +117,37 @@ d=1.76 (clear reprojection-residual minimum). **Same-plane comparison:**
 **cleaner and more stable** CSA/DCE (ratio 0.12 vs 0.55; ±1.5% stability) than slicing the
 COLMAP cloud, while **agreeing** with COLMAP's DCE — exactly where COLMAP's own ring is noisy.
 
+## 8c. Stress test (v0, 6 regions) — SANITY agreement with COLMAP, NOT validation
+`airwayfit_proto.py` CONFIG. Airway-Fit ring is **always tighter** than the COLMAP slice
+(ratio 0.08–0.27 vs 0.29–0.55). Per region (AF = Airway-Fit, COL = COLMAP same plane):
+
+| region | AF DCE | COL DCE | disagree | AF ratio | COL ratio | reproj px | stab % | read |
+|---|---|---|---|---|---|---|---|---|
+| 2_V2 prox-subglottis  | 1.05 | 1.08 | 3%  | **0.12** | 0.55 | 7  | ±3%   | clean **and** agrees ✓ |
+| 25_V1 prox-subglottis | 1.95 | 2.94 | 34% | **0.08** | 0.55 | 18 | ±0.9% | clean+stable; COL noise-inflated |
+| 25_V1 dist-subglottis | 22.1 | —    | —   | **0.10** | (COL null) | 29 | ±3% | clean+stable where COL can't measure |
+| 32_V2 prox-subglottis | 5.38 | 4.41 | 22% | 0.27 | 0.29 | 59 | **±104%** | FAIL — multi-ring, no single throat |
+| 32_V2 dist-subglottis | 2.40 | 6.61 | 64% | 0.16 | 0.35 | 14 | **±202%** | FAIL — unstable |
+| 2_V2 trachea-ref      | 25.1 | —    | —   | 0.19 | (COL null) | 45 | ±85% | FAIL — no throat (expected) |
+
+**Reading (honest):**
+- **Generalises beyond 2_V2:** on **25_V1** (prox+dist) Airway-Fit gives clean, *stable* rings
+  (ratio 0.08–0.10, ±≤3%) exactly where COLMAP is noisy (0.55) or *null*. The 34% DCE
+  "disagreement" on 25_V1 prox is plausibly **COLMAP over-reading** (its ratio-0.55 scatter
+  inflates the median radius), not an Airway-Fit error — but this is **unvalidated**.
+- **Fails on 32_V2** (both regions): the throat search returns *multiple inconsistent rings*
+  (stab ±100–200%) — the glottis/cord-aperture zone has no stable throat (moving cords). This
+  is where COLMAP also failed.
+- Trachea fails as expected (no throat → needs the shading term).
+
+**Decision-rule outcome:** on the 4 NEW subglottic tests, **2/4** give a clean+stable ring
+(25_V1 prox+dist); 2/4 fail (32_V2). That is **not** the ≥3/4 clean pass required to auto-proceed,
+but it is **not** "only 2_V2 works" either — 25_V1 clearly works. → **Middle case: fix two things
+before the full per-`s` investment**, don't green-light blindly and don't scrap:
+1. **Phantom-validate** the lumen-boundary CSA (settles the AF-lumen vs COLMAP-wall DCE gap — the
+   real go/no-go). 2. **Detect/exclude the no-stable-throat case** (32_V2 aperture) instead of
+   emitting a number.
+
 ## 9. Known limitations / failure cases
 - Uniform (no-throat) segments: boundary is falloff, not geometry → high residual; needs the
   shading term. (Trachea is *harder* for this method than the stenosis.)
