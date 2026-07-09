@@ -148,6 +148,40 @@ before the full per-`s` investment**, don't green-light blindly and don't scrap:
    real go/no-go). 2. **Detect/exclude the no-stable-throat case** (32_V2 aperture) instead of
    emitting a number.
 
+## 8d. PHANTOM VALIDATION — FAILED (stop-and-redesign gate)
+Ran v0 **unmodified** on the synthetic phantom (uniform textured tube, **R_GT = 5.0**,
+GT DCE = 10.0; recon→GT scale 3.241). Input via the lossless image sequence; only a data
+path + region config, no method change.
+
+| | DCE (GT units) | error vs GT | ring tightness | reproj | stability |
+|---|---|---|---|---|---|
+| **COLMAP slice** | 9.74 | **2.6%** ✓ | 0.22 | — | — |
+| **Airway-Fit v0** | 26.2 | **161.6%** ✗ | 0.12 | 23.7 px | ±11.8% |
+
+**Airway-Fit is 2.7× too large.** And it *looks* clean+stable (ratio 0.12, ±12%) — a
+**self-consistent ring at the WRONG depth**. Root cause: the phantom is a **uniform tube (no
+geometric throat)**; the v0 throat-depth search has no true convergence and locks onto a
+spurious far depth (where the back-projected dark-lumen boundary yields a ring ~2.7× the true
+wall). This is the same no-throat regime that failed on the trachea and 32_V2.
+
+**Lessons (important):**
+- **Ring tightness / stability ≠ correctness.** The v0's "cleaner, more stable" rings on the
+  real videos are NOT a validity guarantee — on known GT the absolute size is badly wrong. The
+  2_V2 agreement held only because a *real* subglottic narrowing anchored the depth; without a
+  genuine throat the absolute scale is **under-determined**.
+- The pass condition (error <5–10%, stable, ≥COLMAP) is **not met** (161.6% error, and worse
+  than COLMAP's 2.6%). **DECISION (rule 7): STOP and REDESIGN before adding any complexity.**
+  Do NOT proceed to the full per-`s` fit built on the throat-depth search.
+
+## 8e. Redesign direction (before re-testing)
+The absolute depth/radius must come from **parallax**, not a single throat-convergence:
+- Triangulate the airway **wall** directly from multi-view lumen-boundary correspondence across
+  the (wobble-induced) camera baseline — the phantom *has* parallax and GT, so it is the correct
+  test bed. Constrain radius by triangulation, not by picking one convergence plane.
+- Fit the full generalized cylinder `r(s)` over a *range* of depths (§2–4) rather than one ring.
+- Re-validate on BOTH the **uniform** phantom (must recover R=5) **and** a new **stenosis**
+  phantom (fair test for a throat) before trusting any real-video CSA/DCE.
+
 ## 9. Known limitations / failure cases
 - Uniform (no-throat) segments: boundary is falloff, not geometry → high residual; needs the
   shading term. (Trachea is *harder* for this method than the stenosis.)
