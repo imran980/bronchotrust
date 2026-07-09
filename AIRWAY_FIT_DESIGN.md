@@ -182,6 +182,51 @@ The absolute depth/radius must come from **parallax**, not a single throat-conve
 - Re-validate on BOTH the **uniform** phantom (must recover R=5) **and** a new **stenosis**
   phantom (fair test for a throat) before trusting any real-video CSA/DCE.
 
+## 8f. CORRECTED METHOD — multi-view contour-consistency fit (PHANTOM PASSES, conditionally)
+`phantom_contourfit.py`. Replaces v0's per-region **throat-depth search** with a **global
+cross-view consistency** fit, and replaces "tightness/reproj at a single plane" with a
+convergence criterion that *cannot* reward a spurious depth:
+- Each frame's lumen boundary is a **silhouette / occluding-contour** constraint, NOT a set of
+  corresponding 3D points. Back-project every boundary pixel to a world ray (known poses).
+- Find the **single** axial plane `z0` + radius `R` at which the boundary rays from **all**
+  cameras cross at one common radius: `R̂(z0)=median_j r_j(z0)`,
+  `spread(z0)=MAD_j/R̂` → `z0*=argmin spread`, `R*=R̂(z0*)`, `DCE=2R*`.
+- The `spread` at the minimum is the *cross-view disagreement*: near-zero ⇒ a real fixed 3D
+  contour; large ⇒ no shared contour (self-diagnosing — the property v0 lacked).
+
+**Phantom result (R_GT=5, DCE_GT=10; two detectors × two pose sources):**
+
+| detector | pose | fit DCE (GT units) | error | spread | reproj | stab | verdict |
+|---|---|---|---|---|---|---|---|
+| **rim** (true occluding contour) | COLMAP | **10.08** | **0.8%** | 0.009 | 1.3 px | ±33% | **PASS** |
+| **rim** | GT poses | 10.17 | 1.7% | 0.010 | 1.4 px | ±31% | **PASS** |
+| photometric (percentile-dark) | COLMAP | 79.0 | 690% | 0.112 | 28 px | ±175% | FAIL (loud) |
+| photometric | GT poses | 97.1 | 871% | 0.112 | 28 px | ±154% | FAIL (loud) |
+
+Same figure `runs/barbour30/airwayfit/phantom_contourfit/contourfit.png`: the one fitted 3D
+circle reprojects onto the detected boundary at *every* camera distance; the consistency curve
+has a sharp, deep minimum (v0 had none). Compare v0: **161%** error on this same phantom.
+
+**What this establishes**
+- The multi-view contour math is **correct**: on a genuine occluding contour it recovers R to
+  **<2%**, matching the COLMAP cloud slice (9.93) and slightly closer to GT (10.08 vs 10.0).
+- It **self-diagnoses**: the photometric case fails with *high* spread/reproj (28 px, ±175%),
+  i.e. it refuses rather than returning a confident wrong number — unlike v0.
+- **Caveat (decisive for real video):** it passes because the uniform phantom has a real
+  geometric contour (the tube **end/rim**). A uniform tube's *photometric* dark hole (light
+  falloff) is **not** a fixed 3D contour → fails. Real airways have no rim — BUT a real
+  **stenosis throat IS a fixed occluding contour** (the narrowest ring; the wall flares back out
+  behind it). That is exactly why v0 got the real 2_V2 stenosis ~right yet failed the uniform
+  tube. So the honest next gate is a **stenosis phantom** (known throat radius), not real video.
+- Stability caveat: the point estimate is 0.8% but frame-subset spread is ±33%, driven by
+  early (far-from-rim) frames whose small hole weakly constrains `z0`; near-rim frames pin it.
+  A distance/hole-size weighting would tighten this.
+
+**DECISION:** rule 7 (abandon iff it fails the uniform phantom) is **NOT** triggered — the
+contour fit passes the phantom on the true occluding contour at 0.8%. **Do not** abandon; **do
+not** yet touch real video. Next gate: build a **stenosis phantom** and re-validate that the
+contour-consistency fit recovers the known throat radius — the clinical-analog occluding contour.
+
 ## 9. Known limitations / failure cases
 - Uniform (no-throat) segments: boundary is falloff, not geometry → high residual; needs the
   shading term. (Trachea is *harder* for this method than the stenosis.)
