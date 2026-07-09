@@ -50,3 +50,7 @@ _archive/
 # --- intentionally-tracked lightweight docs assets (override *.png / runs rules above) ---
 !docs/figures/
 !docs/figures/*.png
+runs/phantom_sten/images/
+runs/phantom_sten/masks/
+runs/phantom_sten/dense0/
+runs/phantom_sten/*.db

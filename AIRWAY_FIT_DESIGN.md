@@ -227,6 +227,45 @@ contour fit passes the phantom on the true occluding contour at 0.8%. **Do not**
 not** yet touch real video. Next gate: build a **stenosis phantom** and re-validate that the
 contour-consistency fit recovers the known throat radius — the clinical-analog occluding contour.
 
+## 8g. STENOSIS PHANTOM — contour-consistency fit PASSES (the clinical-analog gate)
+`stenosis_phantom.py` (render + COLMAP) + `phantom_contourfit.py stenosis`. A textured tube with
+a known **normal** radius Rn=5 and a known **throat** radius Rt=3 (smooth Gaussian constriction at
+z=42; GT throat DCE=6.0). Long tube (len 150) so the throat is the *only* dark occluding contour
+(a finite end would add a competing r=Rn escape-rim; real airways have none). Camera flies behind
+the throat → the narrowest ring is a fixed 3D occluding contour. COLMAP: 220/220 registered, one
+model, 2.4M dense. Requirement-4 weighting (rays weighted by hole size) + **stratified,
+spread-gated** subset stability (interleaved subsets, not contiguous halves — all-far/all-near
+halves are pathological and self-flag with high spread).
+
+| detector | pose | fit DCE (GT=6.0) | error | spread | reproj | stab | verdict |
+|---|---|---|---|---|---|---|---|
+| **geom** (true throat occluding contour) | COLMAP | 6.32 | **5.3%** | 0.042 | 3.3 px | ±0.8% | **PASS** |
+| **geom** | GT poses | 6.32 | 5.3% | 0.042 | 3.2 px | ±1.3% | **PASS** |
+| **edge** (occlusion-edge, PHOTOMETRIC — real-video path) | COLMAP | 6.50 | **8.3%** | 0.045 | 4.0 px | ±1.2% | **PASS** |
+| **edge** | GT poses | 6.47 | 7.8% | 0.044 | 3.9 px | ±0.6% | **PASS** |
+| phot (brightness threshold) | either | ~149 | ~2380% | 0.23 | 39 px | — | FAIL (loud) |
+| COLMAP dense slice @ throat | — | 6.16–6.37 | 2.6–6.1% | — | — | — | (baseline agrees) |
+
+Figure `runs/barbour30/airwayfit/contourfit_stenosis/contourfit.png`: one global throat circle
+reprojects onto the detected boundary at every distance; sharp consistency minimum at z0*.
+
+**Decisive lessons**
+- **The fit recovers a known internal throat to 5–8%, stable to ±1%** — validated on the clinical
+  analog, not just a tube end. Meets rule 5 (error <5–10% AND stability acceptable). **PASS.**
+- **Detection is the make-or-break, and it is NOT brightness.** On a *smooth* stenosis the dark
+  region is the **dim approaching-constriction wall** (larger, view-varying, not a fixed contour)
+  → every brightness/percentile/near-black detector fails at 200–2400% (and self-flags: spread
+  0.13–0.23). The throat must be found as the **occlusion EDGE** — the innermost strong bright→dark
+  radial gradient (`throat_edge`, polar-unwrap + peak radial gradient) — which passes at 8% from
+  images alone. This is the single most important transferable finding for real video.
+- Weighting + stratified spread-gated subsets turned the earlier ±327% (contiguous halves) into
+  ±1%. The all-far / all-near halves genuinely can't constrain the throat and correctly self-flag.
+
+**DECISION:** stenosis phantom **PASSES** → cleared (per the plan) to test on real 2_V2 / 25_V1,
+using the **occlusion-edge** detector (brightness thresholding is disqualified). Real-video is the
+true stress of the edge detector under mucus/glare/partial throats — report as *sanity agreement
+with COLMAP*, not validation.
+
 ## 9. Known limitations / failure cases
 - Uniform (no-throat) segments: boundary is falloff, not geometry → high residual; needs the
   shading term. (Trachea is *harder* for this method than the stenosis.)
