@@ -1,0 +1,218 @@
+[
+  {
+    "tag": "2_V2 prox-subglottis",
+    "status": "OK",
+    "n_frames": 71,
+    "trajectory": {
+      "axial_span": 0.174,
+      "lateral_span": 0.141,
+      "baseline": 0.191,
+      "path_len": 0.842,
+      "net_disp": 0.147,
+      "tortuosity_dwell": 5.72
+    },
+    "optical_axis_cone_deg": 0.71,
+    "triangulation_deg": {
+      "median": 2.48,
+      "p10": 1.51,
+      "p90": 4.56,
+      "n_ring_pts": 212,
+      "median_allco": 2.13
+    },
+    "baseline_to_depth": 0.1136,
+    "target_depth": 1.677,
+    "track_support": {
+      "n_pts": 1222,
+      "med_track_len": 8.0,
+      "med_region_views": 5.0
+    },
+    "ring_quality": {
+      "n": 20967,
+      "r_med": 0.511,
+      "tightness": 0.547,
+      "coverage": 1.0,
+      "shell": 0.279
+    },
+    "verdict": "MARGINAL capture (triangulation borderline 1.5-3 deg)"
+  },
+  {
+    "tag": "2_V2 dist-subglottis",
+    "status": "OK",
+    "n_frames": 61,
+    "trajectory": {
+      "axial_span": 4.389,
+      "lateral_span": 0.198,
+      "baseline": 4.391,
+      "path_len": 4.536,
+      "net_disp": 4.391,
+      "tortuosity_dwell": 1.03
+    },
+    "optical_axis_cone_deg": 1.52,
+    "triangulation_deg": {
+      "median": 3.71,
+      "p10": 1.63,
+      "p90": 8.6,
+      "n_ring_pts": 182,
+      "median_allco": 3.06
+    },
+    "baseline_to_depth": 1.5259,
+    "target_depth": 2.878,
+    "track_support": {
+      "n_pts": 1363,
+      "med_track_len": 6.0,
+      "med_region_views": 4.0
+    },
+    "ring_quality": {
+      "n": 9134,
+      "r_med": 0.759,
+      "tightness": 0.263,
+      "coverage": 1.0,
+      "shell": 0.2
+    },
+    "verdict": "SEGMENTATION/MEASUREMENT gap (geometry + surface exist; slicing/measure is the limit)"
+  },
+  {
+    "tag": "25_V1 prox-subglottis",
+    "status": "OK",
+    "n_frames": 54,
+    "trajectory": {
+      "axial_span": 0.343,
+      "lateral_span": 0.227,
+      "baseline": 0.355,
+      "path_len": 1.292,
+      "net_disp": 0.206,
+      "tortuosity_dwell": 6.27
+    },
+    "optical_axis_cone_deg": 1.28,
+    "triangulation_deg": {
+      "median": 2.8,
+      "p10": 1.47,
+      "p90": 4.82,
+      "n_ring_pts": 372,
+      "median_allco": 2.35
+    },
+    "baseline_to_depth": 0.1335,
+    "target_depth": 2.658,
+    "track_support": {
+      "n_pts": 789,
+      "med_track_len": 8.0,
+      "med_region_views": 6.0
+    },
+    "ring_quality": {
+      "n": 16351,
+      "r_med": 1.011,
+      "tightness": 0.393,
+      "coverage": 1.0,
+      "shell": 0.398
+    },
+    "verdict": "MARGINAL capture (triangulation borderline 1.5-3 deg)"
+  },
+  {
+    "tag": "25_V1 dist-subglottis",
+    "status": "OK",
+    "n_frames": 48,
+    "trajectory": {
+      "axial_span": 3.521,
+      "lateral_span": 0.113,
+      "baseline": 3.521,
+      "path_len": 3.588,
+      "net_disp": 3.521,
+      "tortuosity_dwell": 1.02
+    },
+    "optical_axis_cone_deg": 2.95,
+    "triangulation_deg": {
+      "median": 3.86,
+      "p10": 1.74,
+      "p90": 8.05,
+      "n_ring_pts": 236,
+      "median_allco": 3.33
+    },
+    "baseline_to_depth": 0.866,
+    "target_depth": 4.066,
+    "track_support": {
+      "n_pts": 1071,
+      "med_track_len": 8.0,
+      "med_region_views": 6.0
+    },
+    "ring_quality": {
+      "n": 19041,
+      "r_med": 1.069,
+      "tightness": 0.362,
+      "coverage": 1.0,
+      "shell": 0.387
+    },
+    "verdict": "RECIPE gap (usable triangulation+tracks, but dense ring surface is poor)"
+  },
+  {
+    "tag": "32_V2 prox-subglottis",
+    "status": "OK",
+    "n_frames": 29,
+    "trajectory": {
+      "axial_span": 1.407,
+      "lateral_span": 0.08,
+      "baseline": 1.407,
+      "path_len": 1.466,
+      "net_disp": 1.407,
+      "tortuosity_dwell": 1.04
+    },
+    "optical_axis_cone_deg": 0.74,
+    "triangulation_deg": {
+      "median": 1.49,
+      "p10": 0.34,
+      "p90": 2.68,
+      "n_ring_pts": 424,
+      "median_allco": 1.46
+    },
+    "baseline_to_depth": 0.2969,
+    "target_depth": 4.74,
+    "track_support": {
+      "n_pts": 2961,
+      "med_track_len": 16.0,
+      "med_region_views": 4.0
+    },
+    "ring_quality": {
+      "n": 162482,
+      "r_med": 1.044,
+      "tightness": 0.495,
+      "coverage": 1.0,
+      "shell": 0.516
+    },
+    "verdict": "CAPTURE gap (insufficient triangulation/track support)"
+  },
+  {
+    "tag": "32_V2 dist-subglottis",
+    "status": "OK",
+    "n_frames": 29,
+    "trajectory": {
+      "axial_span": 1.048,
+      "lateral_span": 0.211,
+      "baseline": 1.057,
+      "path_len": 1.244,
+      "net_disp": 1.057,
+      "tortuosity_dwell": 1.18
+    },
+    "optical_axis_cone_deg": 0.44,
+    "triangulation_deg": {
+      "median": 4.27,
+      "p10": 0.69,
+      "p90": 7.56,
+      "n_ring_pts": 2854,
+      "median_allco": 3.1
+    },
+    "baseline_to_depth": 0.2186,
+    "target_depth": 4.834,
+    "track_support": {
+      "n_pts": 6388,
+      "med_track_len": 18.0,
+      "med_region_views": 5.0
+    },
+    "ring_quality": {
+      "n": 301164,
+      "r_med": 1.528,
+      "tightness": 0.238,
+      "coverage": 1.0,
+      "shell": 0.364
+    },
+    "verdict": "SEGMENTATION/MEASUREMENT gap (geometry + surface exist; slicing/measure is the limit)"
+  }
+]

@@ -329,6 +329,55 @@ segmenter.** The footage lacks a stable contour/geometry (near-zero parallax), n
 The contour-consistency fit remains **validated on known geometry** (uniform rim 0.8%, stenosis
 throat 5–8%) and is ready for any *adequately-parallaxed* clip; it correctly refuses these.
 
+## 8j. GEOMETRY-GAP AUDIT — corrects §8i: it is NOT a blanket parallax wall (region-specific)
+`geometry_gap_audit.py`. §8i concluded "near-zero parallax" from the optical-axis **cone** angle
+(0.4–2.9°). That was the wrong metric: parallel-axis lateral translation gives a ~0° cone yet real
+triangulation at a near target. Computing the TRUE target-aware triangulation angle (max pairwise
+angle at each co-observed 3D point, restricted to the ring wall), track support, and dense-ring
+quality per region:
+
+| region | cone° | **tri median°** (ring) | tri p90° | n_pts | views | ring tight | cov | verdict |
+|---|---|---|---|---|---|---|---|---|
+| 2_V2 prox  | 0.71 | 2.48 | 4.6 | 1222 | 5 | 0.55 | 1.0 | marginal capture |
+| 2_V2 **dist** | 1.52 | **3.71** | 8.6 | 1363 | 4 | 0.26 | 1.0 | **measurement gap** |
+| 25_V1 prox | 1.28 | 2.80 | 4.8 | 789 | 6 | 0.39 | 1.0 | marginal capture |
+| 25_V1 dist | 2.95 | **3.86** | 8.1 | 1071 | 6 | 0.36 | 1.0 | recipe gap |
+| 32_V2 prox | 0.74 | 1.49 | 2.7 | 2961 | 4 | 0.50 | 1.0 | capture gap |
+| 32_V2 **dist** | 0.44 | **4.27** | 7.6 | 6388 | 5 | 0.24 | 1.0 | **measurement gap** |
+
+**Key correction.** The optical-axis cone badly *understates* parallax — 32_V2 dist has cone 0.44°
+but true ring triangulation **median 4.27°, p90 7.6°**. Track support is **good everywhere**
+(789–6388 co-observed pts, 4–6 views/pt, median track len ≥3), and dense rings have **100% angular
+coverage**. So the earlier flat "footage lacks geometry / impossible" was **too strong**.
+
+**Region-specific truth:**
+- **Proximal subglottis** (2_V2, 25_V1, 32_V2 prox): triangulation **1.5–2.8°** — genuinely
+  capture/parallax-**marginal** (below the pipeline's `init_min_tri_angle=4`). "Marginal," not
+  "impossible."
+- **Distal subglottis** (2_V2, 25_V1, 32_V2 dist): triangulation **3.7–4.3°** (at/above 4°) with a
+  reconstructed **100%-coverage** dense wall ring (tightness 0.24–0.36) → **NOT parallax-limited**;
+  the gap is **measurement/recipe** (extract a clean CSA from the existing ring).
+
+**Why the contour-fit still failed here** (reconciles §8h/§8i): it needs a *fixed occluding
+contour* (a throat aperture). An open subglottic lumen doesn't present one — the 2D lumen edge is a
+view-dependent silhouette of the receding wall — so its rays don't converge *regardless of
+parallax*. That is a **method-assumption mismatch**, not proof the footage is unusable. The dense
+**wall ring** is reconstructed (100% cov); the COLMAP dense-**slice** baseline is the right tool for
+it and already produced scene-unit % on 2_V2 (and is the path for the distal rings).
+
+Caveats (do not over-read): the ring slice uses the camera-trajectory PCA as the axis, a weak proxy
+for the true airway centerline when the scope dwells (small camera cluster → noisy PCA); the
+per-point local baseline is what the tri angle captures, so the traj-level b/d ratio is only an
+upper bound. Verdict thresholds: tri usable ≥3°, poor <1.5°; tracks ≥150 pts & ≥3 views; ring tight
+≤0.35 & cov ≥0.6. Figure `runs/barbour30/airwayfit/geomgap/geomgap_summary.png`.
+
+**Net decision.** Not a pure capture wall. Two actionable tracks: (a) the **distal** rings have
+usable geometry + a reconstructed surface → invest in **measurement** (robust airway-centerline
+slicing + CSA agreement) on the dense cloud, not a segmenter and not the aperture contour-fit;
+(b) the **proximal** subglottis is parallax-marginal → only a capture-protocol change (advancing,
+wider-baseline pass) reliably improves it. "Impossible" is retracted; "marginal proximally,
+measurement-limited distally" is the supported statement.
+
 ## 9. Known limitations / failure cases
 - Uniform (no-throat) segments: boundary is falloff, not geometry → high residual; needs the
   shading term. (Trachea is *harder* for this method than the stenosis.)
