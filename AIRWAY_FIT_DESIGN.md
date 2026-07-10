@@ -410,6 +410,40 @@ region is now concrete: 2_V2 dist = measurable; 32_V2/25_V1 dist = complete-the-
 proximal subglottis = capture-marginal (§8j). Figure
 `runs/barbour30/airwayfit/centerline_csa/centerline_csa.png`.
 
+## 8l. 2_V2 DELIVERABLE — scale-free % obstruction from ONE global model (32% CSA, lower bound)
+`obstruction_2v2.py`. One continuous cloud medial-axis centerline through the 2_V2 subglottis
+(global dense model `runs/batch4/2-V2/dense0/fused.ply`, frames 875-1045); both the distal
+reference ring and the proximal narrowest ring measured on this ONE centerline → one scene-unit
+scale (no local-batch DCE, no mixed scales). CSA three ways with a uniform robust radial-outlier
+trim; accept iff coverage ≥0.75 AND estimators agree ≤1.3× AND r_std/r_med ≤0.35.
+
+| ring | u | coverage | r_std/r_med | CSA | DCE | est. spread (polar/ell/hull) | stability |
+|---|---|---|---|---|---|---|---|
+| distal reference | 5.2 | 100% | 0.12 | 1.87 | **1.54** | 1.14 (1.86/1.87/2.13) | ±1.3% |
+| proximal narrowest | 2.25 | 100% | 0.10 | 1.27 | **1.27** | 1.29 (1.21/1.27/1.56) | ±6.2% |
+
+- **CSA obstruction = 1 − 1.27/1.87 = 32%** (band 21.5–32.5%)
+- **diameter narrowing = 1 − 1.27/1.54 = 17.5%**
+
+Scene units only; scale-free, within-video; **NOT absolute mm; NOT a final Myer-Cotton grade.**
+
+**This is a LOWER BOUND.** The accepted CSA profile is **monotonic** (no interior local minimum):
+polar & ellipse (the two outlier-robust estimators) agree to ~5% everywhere and keep dropping below
+the accepted band (to DCE ~1.13 at u≈0.2), but those proximal-most slices fail the strict 3-way
+gate (the convex hull inflates on stray points) and the *true* subglottic throat is even more
+proximal (frames ~875-945, dwelling cameras) and **not densely reconstructed** (centerline can't
+form there). So the real obstruction is **≥32%**.
+
+**Cross-validation.** 32% CSA (17.5% diameter) closely matches the independent `barbour30_band`
+result (~33% area, band 24–38%) — two different methods on the same video converge. The convex
+hull is a known outlier-sensitive upper bound; polar & ellipse are the load-bearing estimators
+here (agree ~5%), with the hull kept only as the third gate. Figures
+`runs/barbour30/airwayfit/obstruction_2v2/obstruction_{rings,profile}.png`.
+
+**Status.** 2_V2 has a defensible, same-model, scale-free % obstruction: **~32% CSA / ~17.5%
+diameter (lower bound)**. This is the first deliverable-grade number produced end-to-end by the
+validated centerline-slice method.
+
 ## 9. Known limitations / failure cases
 - Uniform (no-throat) segments: boundary is falloff, not geometry → high residual; needs the
   shading term. (Trachea is *harder* for this method than the stenosis.)

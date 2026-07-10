@@ -83,7 +83,10 @@ def slice_csa(P, p, t):
     band = P[np.abs(d) <= 0.30 * r0]
     if len(band) < 40: return None
     x, y = (band - p) @ e1, (band - p) @ e2; r = np.hypot(x, y); th = np.arctan2(y, x)
-    rm0 = np.median(r); ring = (r > 0.45 * rm0) & (r < 1.7 * rm0)             # isolate the wall annulus
+    # isolate the wall annulus with a ROBUST radial-outlier trim (MAD-based) — stray reconstruction
+    # points inflate the convex-hull estimator; median/MAD removes them uniformly across all slices.
+    rm0 = np.median(r); mad = np.median(np.abs(r - rm0)) + 1e-9
+    ring = (np.abs(r - rm0) <= 3.5 * mad) & (r > 0.4 * rm0) & (r < 1.8 * rm0)
     x, y, r, th = x[ring], y[ring], r[ring], th[ring]
     if len(r) < 30: return None
     r_med = float(np.median(r)); ratio = float(np.std(r) / max(r_med, 1e-9))
