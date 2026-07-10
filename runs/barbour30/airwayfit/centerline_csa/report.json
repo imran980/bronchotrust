@@ -1,0 +1,75 @@
+[
+  {
+    "tag": "2_V2 dist-subglottis",
+    "status": "OK",
+    "n_slices": 60,
+    "n_accepted": 27,
+    "centerline": "cloud medial-axis (slab-centroid + smoothing spline)",
+    "best": {
+      "spline_i": 130,
+      "coverage": 1.0,
+      "r_std_over_r_med": 0.096,
+      "CSA": 1.8392,
+      "DCE": 1.5303,
+      "csa_polar": 1.8388,
+      "csa_ellipse": 1.8392,
+      "csa_hull": 2.0094,
+      "estimator_spread": 1.093
+    },
+    "stability_band_DCE": [
+      1.498,
+      1.537
+    ],
+    "stability_pct": 2.5,
+    "best_attempt": {
+      "coverage": 1.0,
+      "r_std_over_r_med": 0.096,
+      "DCE": 1.53,
+      "estimator_spread": 1.093,
+      "csa_polar": 1.839,
+      "csa_ellipse": 1.839,
+      "csa_hull": 2.009
+    },
+    "verdict": "ACCEPT: clean centerline-slice CSA (cov high, estimators <=1.3x, stable)"
+  },
+  {
+    "tag": "32_V2 dist-subglottis",
+    "status": "OK",
+    "n_slices": 60,
+    "n_accepted": 0,
+    "centerline": "cloud medial-axis (slab-centroid + smoothing spline)",
+    "best": null,
+    "stability_band_DCE": null,
+    "stability_pct": null,
+    "best_attempt": {
+      "coverage": 0.56,
+      "r_std_over_r_med": 0.219,
+      "DCE": 2.321,
+      "estimator_spread": 1.171,
+      "csa_polar": 3.918,
+      "csa_ellipse": 4.229,
+      "csa_hull": 4.589
+    },
+    "verdict": "REJECT (coverage-limited): best ring cov 56%, estimators AGREE (1.17) -> partial wall = recon-completeness/recipe gap"
+  },
+  {
+    "tag": "25_V1 dist-subglottis",
+    "status": "OK",
+    "n_slices": 60,
+    "n_accepted": 0,
+    "centerline": "cloud medial-axis (slab-centroid + smoothing spline)",
+    "best": null,
+    "stability_band_DCE": null,
+    "stability_pct": null,
+    "best_attempt": {
+      "coverage": 0.61,
+      "r_std_over_r_med": 0.34,
+      "DCE": 2.256,
+      "estimator_spread": 1.078,
+      "csa_polar": 3.726,
+      "csa_ellipse": 3.997,
+      "csa_hull": 4.017
+    },
+    "verdict": "REJECT (coverage-limited): best ring cov 61%, estimators AGREE (1.08) -> partial wall = recon-completeness/recipe gap"
+  }
+]

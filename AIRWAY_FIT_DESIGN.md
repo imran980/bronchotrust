@@ -378,6 +378,38 @@ slicing + CSA agreement) on the dense cloud, not a segmenter and not the apertur
 wider-baseline pass) reliably improves it. "Impossible" is retracted; "marginal proximally,
 measurement-limited distally" is the supported statement.
 
+## 8k. CENTERLINE-SLICE CSA on the distal rings — confirms §8j (2_V2 dist is measurable)
+`centerline_csa.py`. Acting on §8j (distal subglottis has usable geometry + a reconstructed ring):
+measured CSA on the DISTAL dense rings using the airway **medial-axis centerline from the point
+cloud** (slab-centroid path + smoothing spline, NOT camera-PCA), slices **perpendicular to the
+local centerline tangent**, CSA three ways (polar-median polygon, ellipse fit, convex-hull
+free-contour). Accept iff coverage ≥0.75 AND estimators agree ≤1.3× AND r_std/r_med ≤0.35.
+
+| region | centerline | cov | r_std/r_med | CSA | DCE | est. spread | stability | verdict |
+|---|---|---|---|---|---|---|---|---|
+| **2_V2 dist** | cloud medial-axis | **1.00** | **0.096** | 1.84 | **1.53** | **1.09** | ±2.5% | **ACCEPT** |
+| 32_V2 dist | cloud medial-axis | 0.56* | 0.219* | (4.0*) | — | 1.17* | — | reject: coverage-limited |
+| 25_V1 dist | cloud medial-axis | 0.61* | 0.34* | (3.9*) | — | 1.08* | — | reject: coverage-limited |
+\* = best-attempt slice (not accepted). Scene units only (no mm).
+
+**Findings**
+- **2_V2 dist ACCEPTS cleanly**: a full ring (cov 100%, r_std/r_med 0.096), three estimators within
+  **1.09×**, DCE **1.53** (scene units) stable to **±2.5%** across nearby slices; CSA tapers smoothly
+  and monotonically along the centerline. This **confirms §8j** — the distal geometry is real and,
+  with a proper cloud medial-axis slice, a clean CSA comes out. The measurement gap is *closable*
+  where the reconstruction is clean.
+- **32_V2 / 25_V1 dist fail on COVERAGE, not noise**: at their best slice the three estimators
+  actually **agree** (spread 1.17 / 1.08) but only **56% / 61%** of the ring circumference is
+  reconstructed → a **partial wall = reconstruction-completeness / recipe gap**, not estimator chaos
+  and not absent geometry. A fuller reconstruction (more/better frames, Barbour's recipe) could
+  complete the ring. (32_V2 also uses borrowed calibration — provisional.)
+
+**Net.** The centerline-slice measurement *works* on the one clean distal reconstruction (2_V2
+dist) and **correctly refuses** the partial ones rather than fabricating. Ordering of the gap by
+region is now concrete: 2_V2 dist = measurable; 32_V2/25_V1 dist = complete-the-ring (recipe);
+proximal subglottis = capture-marginal (§8j). Figure
+`runs/barbour30/airwayfit/centerline_csa/centerline_csa.png`.
+
 ## 9. Known limitations / failure cases
 - Uniform (no-throat) segments: boundary is falloff, not geometry → high residual; needs the
   shading term. (Trachea is *harder* for this method than the stenosis.)
