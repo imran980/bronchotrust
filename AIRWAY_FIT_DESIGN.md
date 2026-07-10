@@ -300,6 +300,35 @@ behind-a-constriction geometry; (c) accept that these particular low-texture, ir
 subglottis clips are data-limited (consistent with the whole project's finding). Not a redesign
 of the fit.
 
+## 8i. ORACLE-CONTOUR TEST — the real-video failure is GEOMETRY, not detection (decisive)
+`annotate_oracle.py` + `oracle_fit.py`. Before building any learned segmenter, gave the validated
+fit the best-possible contours: **human-annotated** the same narrowest-lumen ring in 10 frames per
+region (2_V2 prox, 25_V1 prox/dist), verified every overlay (`runs/.../oracle/verify_*.png`), then
+ran the fit with the real COLMAP poses.
+
+| region | fit DCE | COLMAP slice | spread | reproj | vs phantom (0.04 / 3–5px) |
+|---|---|---|---|---|---|
+| 2_V2 prox  | 0.55 | 1.03 | **0.30** | 57 px | ✗ no convergence |
+| 25_V1 prox | 0.93 | — | **0.25** | 114 px | ✗ no convergence |
+| 25_V1 dist | 5.19 | 2.92 | **0.15** | 39 px | ✗ no convergence |
+
+**Even perfect contours do NOT converge**, and the oracle 2_V2 spread (0.30) is **no better than
+the auto-detector's (0.34)** → the bottleneck is *not* detection. The consistency curves are flat
+with **no minimum** (phantom dipped sharply to 0.04); the fitted circles are wildly off the (good)
+oracle contours (`runs/.../oracle/oracle_diagnostic.png`).
+
+**Root cause = near-zero parallax.** Max optical-axis (viewing-cone) angle over the annotated
+camera sets: **2_V2 prox 0.4°, 25_V1 prox 1.2°, 25_V1 dist 2.9°** — the optical axes are nearly
+parallel. With ~0° parallax the back-projected contour rays are near-parallel, so there is no
+well-conditioned axial plane where they cross at a common radius — regardless of contour quality.
+This is information-theoretic (CLAUDE.md locked decision #6: no method overcomes zero parallax) and
+matches the project's core finding that these dwelling subglottis clips are low-parallax.
+
+**DECISION (per the oracle rule):** oracle/manual contours **FAIL** → **do NOT build a learned
+segmenter.** The footage lacks a stable contour/geometry (near-zero parallax), not a detector.
+The contour-consistency fit remains **validated on known geometry** (uniform rim 0.8%, stenosis
+throat 5–8%) and is ready for any *adequately-parallaxed* clip; it correctly refuses these.
+
 ## 9. Known limitations / failure cases
 - Uniform (no-throat) segments: boundary is falloff, not geometry → high residual; needs the
   shading term. (Trachea is *harder* for this method than the stenosis.)
