@@ -266,6 +266,40 @@ using the **occlusion-edge** detector (brightness thresholding is disqualified).
 true stress of the edge detector under mucus/glare/partial throats — report as *sanity agreement
 with COLMAP*, not validation.
 
+## 8h. REAL VIDEO (2_V2 / 25_V1) — sanity test: does NOT transfer yet (self-diagnosed)
+`realvideo_contourfit.py`. Ran the phantom-validated fit + occlusion-edge detector on real
+subglottis regions, using the **exact extracted frames on disk** (`runs/batch4/<v>/images` by
+name → no POS_FRAMES drift) with the baseline COLMAP poses. Scene units; SANITY vs the COLMAP
+dense slice — **not validation** (no GT here).
+
+| region | fit DCE (scene) | COLMAP slice | agree | spread | reproj | sanity |
+|---|---|---|---|---|---|---|
+| 2_V2 prox-subglottis | 0.10 (degenerate) | — (no slice) | — | **0.34** | 122 px | ✗ |
+| 25_V1 prox-subglottis | 0.99 | 1.59 | 38% | **0.33** | 126 px | ✗ |
+| 25_V1 dist-subglottis | 3.76 | 2.14 | 76% | **0.19** | 40 px | ✗ |
+
+Figure `runs/barbour30/airwayfit/realvideo_contourfit/realvideo.png`. Compare the phantom:
+spread **0.04**, reproj **3–4 px**. On real video spread is **5–9×** worse and the consistency
+curves have **no clean minimum** → the per-frame detected edges do **not** back-project to one
+fixed 3D circle. The method **refuses** (high spread/reproj) rather than returning a confident
+wrong number — the designed-in self-diagnosis (unlike v0).
+
+**Why (visible in the figure):** the real subglottic lumen boundary is irregular / non-circular,
+often multi-lobed, and the dark region wanders frame-to-frame (mucus, glare, folds, oblique
+scope). The occlusion-edge detector traces *a* boundary each frame, but not the *same* fixed 3D
+throat ring across frames — so there is nothing consistent to converge to. This is exactly the
+bottleneck the stenosis phantom flagged: the fit is only as good as a **consistent** occluding
+contour, and real anatomy/imaging does not hand one to a brightness-gradient detector.
+
+**Status / decision.** The multi-view contour-consistency **fit is validated on known geometry**
+(uniform rim 0.8%, stenosis throat 5–8%), but it **does not yet transfer to real subglottis
+video** — and it says so honestly. This is a *detection/consistency* gap, not a fit-math gap.
+Next options (do NOT overclaim before one works): (a) a **learned/temporally-consistent** throat
+segmenter that tracks one anatomical ring across frames; (b) restrict to clips with genuine
+behind-a-constriction geometry; (c) accept that these particular low-texture, irregular
+subglottis clips are data-limited (consistent with the whole project's finding). Not a redesign
+of the fit.
+
 ## 9. Known limitations / failure cases
 - Uniform (no-throat) segments: boundary is falloff, not geometry → high residual; needs the
   shading term. (Trachea is *harder* for this method than the stenosis.)
