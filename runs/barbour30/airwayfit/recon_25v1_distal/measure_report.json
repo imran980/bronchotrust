@@ -1,0 +1,42 @@
+[
+  {
+    "fusion": "geometric",
+    "status": "OK",
+    "cloud_pts": 293753,
+    "n_slices": 90,
+    "n_accepted": 8,
+    "thin_slab_max_coverage": 1.0,
+    "median_pe_at_hi_cov": 1.097,
+    "accepted": true,
+    "coverage": 1.0,
+    "r_std_over_r_med": 0.234,
+    "CSA": 16.6182,
+    "DCE": 4.5999,
+    "estimator_spread": 1.262,
+    "csa_polar": 16.297,
+    "csa_ellipse": 16.6182,
+    "csa_hull": 20.5627,
+    "stability_pct": 9.1,
+    "reason": "THIN-slab coverage 100%, estimators 1.26<=1.3, ratio 0.23, stable \u00b19.1%"
+  },
+  {
+    "fusion": "photometric",
+    "status": "OK",
+    "cloud_pts": 169041,
+    "n_slices": 90,
+    "n_accepted": 7,
+    "thin_slab_max_coverage": 1.0,
+    "median_pe_at_hi_cov": 1.056,
+    "accepted": true,
+    "coverage": 1.0,
+    "r_std_over_r_med": 0.215,
+    "CSA": 14.0243,
+    "DCE": 4.2257,
+    "estimator_spread": 1.214,
+    "csa_polar": 13.4601,
+    "csa_ellipse": 14.0243,
+    "csa_hull": 16.3385,
+    "stability_pct": 9.8,
+    "reason": "THIN-slab coverage 100%, estimators 1.21<=1.3, ratio 0.21, stable \u00b19.8%"
+  }
+]
