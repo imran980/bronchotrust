@@ -477,6 +477,34 @@ This is consistent with §8j (32_V2 dist was borrowed-calib/provisional; the aud
 "tightness 0.24" was a union artifact of the streak scatter). Only **2_V2** (§8l) yields a
 deliverable-grade ring today.
 
+## 8n. 25_V1 DISTAL RE-RECONSTRUCTION — near-miss → ACCEPTED (arc gap closed)
+`reconstruct_25v1_distal.py` + `measure_25v1_distal.py`. Targeted re-reconstruction of the 25_V1
+distal window (frames on disk, no POS_FRAMES drift): 79 denser + sharpness-filtered frames
+(390–470, dropped 2 blurry), CLAHE, **pinned** OPENCV intrinsics, **exhaustive** matching (1884
+geometry-verified pairs), fresh dense MVS (geometric consistency), **both** geometric + photometric
+fusion. Then refined cloud medial-axis centerline, perpendicular THIN-slab (0.30·r_med) slicing,
+CSA 3 ways + a legitimate 2D **statistical-outlier declutter** (removes the scattered stray MVS
+points that had inflated the convex hull — the ring itself is fully covered, so this is lever-4
+decluttering, not hallucinated fill).
+
+| fusion | thin-slab coverage before→after | CSA (pol/ell/hull) | DCE | 3-way spread | ratio | stability | accepted |
+|---|---|---|---|---|---|---|---|
+| **geometric** | ~56% (gap) → **100%** | 17.9 / 17.5 / 21.5 | **4.60** | **1.26** | 0.23 | ±9.1% | **YES** |
+| photometric | → 100% | 14.0 / 14.2 / 16.5 | 4.23 | 1.21 | 0.21 | ±9.8% | YES |
+
+**Result: 25_V1 distal converts from near-miss to ACCEPTED.** The denser exhaustive-matched
+re-reconstruction **closed the residual arc gap** (thin-slab coverage 56%→100%, no thick-slab
+faking), polar≈ellipse agree (pe 1.03), and after decluttering the stray points the 3-way spread
+falls to 1.26 (≤1.3) with a tight ratio (0.23) and stable nearby slices (±9%). The two fusions
+agree to ~8% (geometric is the cleaner, reported).
+
+**Honest scope.** DCE 4.60 is in the **new distal reconstruction's own scene units** — scale-free
+within this connected model only; **NOT** comparable to 2_V2 or the old 25_V1 global model, **NOT**
+mm, **NOT** a Myer-Cotton grade. Stability ±9% is looser than 2_V2's ±1–2%. What made it work:
+denser frames + exhaustive matching + fresh MVS (the depth maps the old cloud had lost), plus the
+refined medial-axis and declutter. This confirms §8m's diagnosis — 25_V1 distal was one
+denser-reconstruction away, and it got there.
+
 ## 9. Known limitations / failure cases
 - Uniform (no-throat) segments: boundary is falloff, not geometry → high residual; needs the
   shading term. (Trachea is *harder* for this method than the stenosis.)

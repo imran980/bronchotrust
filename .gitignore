@@ -54,3 +54,6 @@ runs/phantom_sten/images/
 runs/phantom_sten/masks/
 runs/phantom_sten/dense0/
 runs/phantom_sten/*.db
+runs/barbour30/airwayfit/recon_25v1_distal/dense/
+runs/barbour30/airwayfit/recon_25v1_distal/images/
+runs/barbour30/airwayfit/recon_25v1_distal/*.db
