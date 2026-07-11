@@ -1,0 +1,117 @@
+[
+  {
+    "tag": "25_V1 dist-subglottis",
+    "status": "OK",
+    "cloud_pts_before": 234973,
+    "cloud_pts_after_clean": 229987,
+    "coverage_before": 0.78,
+    "coverage_after": 1.0,
+    "thickness_sweep": {
+      "0.3": {
+        "thick": 0.3,
+        "cov": 0.78,
+        "ratio": 0.398,
+        "spread": 1.179,
+        "dce": 2.433,
+        "i": 166
+      },
+      "0.4": {
+        "thick": 0.4,
+        "cov": 0.92,
+        "ratio": 0.394,
+        "spread": 1.292,
+        "dce": 2.434,
+        "i": 166
+      },
+      "0.5": {
+        "thick": 0.5,
+        "cov": 0.86,
+        "ratio": 0.378,
+        "spread": 1.294,
+        "dce": 2.392,
+        "i": 170
+      },
+      "0.6": {
+        "thick": 0.6,
+        "cov": 0.75,
+        "ratio": 0.367,
+        "spread": 1.254,
+        "dce": 2.366,
+        "i": 174
+      },
+      "0.75": {
+        "thick": 0.75,
+        "cov": 1.0,
+        "ratio": 0.312,
+        "spread": 2.604,
+        "dce": 2.308,
+        "i": 34
+      }
+    },
+    "accepted": false,
+    "failure_mode": "NEAR-MISS (hull/ratio-blocked; real ring w/ arc gap)",
+    "median_polar_ellipse_ratio": 1.143,
+    "robust_DCE_polar_ellipse": 2.351,
+    "polar_ellipse_ratio": 1.031,
+    "ratio_at_full_cov": 0.37,
+    "three_way_spread": 1.355,
+    "csa_polar": 4.2738,
+    "csa_ellipse": 4.4079,
+    "csa_hull": 5.7927,
+    "reason": "coverage 78%->86% ACHIEVED; polar~ellipse AGREE typically (median pe 1.14, robust DCE~2.35) = a REAL ring, but full coverage needs a thick slab (no thin clean full ring) -> ratio 0.37 + hull-inflated 3-way spread 1.36>1.3. Strict gate NARROWLY missed; a denser recon could close the residual arc gap."
+  },
+  {
+    "tag": "32_V2 dist-subglottis",
+    "status": "OK",
+    "cloud_pts_before": 1401238,
+    "cloud_pts_after_clean": 1390362,
+    "coverage_before": 0.47,
+    "coverage_after": 1.0,
+    "thickness_sweep": {
+      "0.3": {
+        "thick": 0.3,
+        "cov": 0.47,
+        "ratio": 0.214,
+        "spread": 1.253,
+        "dce": 2.932,
+        "i": 28
+      },
+      "0.4": {
+        "thick": 0.4,
+        "cov": 1.0,
+        "ratio": 0.361,
+        "spread": 2.764,
+        "dce": 1.199,
+        "i": 38
+      },
+      "0.5": {
+        "thick": 0.5,
+        "cov": 0.5,
+        "ratio": 0.171,
+        "spread": 1.064,
+        "dce": 2.77,
+        "i": 78
+      },
+      "0.6": {
+        "thick": 0.6,
+        "cov": 1.0,
+        "ratio": 0.372,
+        "spread": 2.686,
+        "dce": 1.261,
+        "i": 38
+      },
+      "0.75": {
+        "thick": 0.75,
+        "cov": 1.0,
+        "ratio": 0.35,
+        "spread": 2.82,
+        "dce": 1.378,
+        "i": 38
+      }
+    },
+    "accepted": false,
+    "failure_mode": "GENUINE (radial-streak scatter; robust estimators disagree)",
+    "median_polar_ellipse_ratio": 1.709,
+    "reason": "coverage nominally reaches 100% but the distal cloud is a radial-streak MVS scatter, NOT a coherent wall: polar vs ellipse TYPICALLY disagree (median pe 1.71). Genuine low-parallax reconstruction-quality gap (borrowed calib); needs re-capture/re-recon, not slicing."
+  }
+]

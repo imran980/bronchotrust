@@ -444,6 +444,39 @@ here (agree ~5%), with the hull kept only as the third gate. Figures
 diameter (lower bound)**. This is the first deliverable-grade number produced end-to-end by the
 validated centerline-slice method.
 
+## 8m. RING COMPLETENESS on 25_V1 / 32_V2 distal — coverage improved but strict gate not met
+`ring_completeness.py`. MVS depth maps were freed (no cheap re-fusion; 25_V1 undistorted images
+gone too), so **legitimate levers only** on the existing global cloud: (4) glare/dark + statistical
++ radial-MAD declutter, (5) a **refined** cloud medial-axis centerline (iterate: perp-slice →
+recompute medial centroid → re-spline), (6) re-slice perpendicular, and a slab-thickness sweep
+(real points from nearby axial offsets, guarded by the ratio + estimator gates). Polar / ellipse /
+hull reported separately.
+
+| video | coverage before → after | robust DCE (polar≈ell) | ratio | 3-way spread | median pe | accepted | reason |
+|---|---|---|---|---|---|---|---|
+| 25_V1 dist | 0.56 → **0.78** (thin, refined) / 1.0 (thick) | ~2.35 | 0.37 | 1.36 | 1.14 (agree) | **NO** | near-miss |
+| 32_V2 dist | 0.56 → 1.0 (nominal) | unstable | — | >2 | 1.71 (disagree) | **NO** | genuine fail |
+
+**Two different outcomes (figure `runs/.../ring_completeness/ring_completeness.png`):**
+- **25_V1 dist = NEAR-MISS.** The refined centerline + declutter *alone* lifted thin-slab coverage
+  0.56→0.78 (≥0.75), and thickening reaches 1.0. It's a **real ring** — polar≈ellipse agree
+  typically (median pe 1.14, robust DCE ~2.35) — with **one residual arc gap** (lower-right). But
+  no *thin clean* full ring exists, so full coverage needs a thick slab → ratio 0.37 (loose) and the
+  outlier-sensitive convex hull inflates the 3-way spread to 1.36 (>1.3). Strict gate narrowly
+  missed. A **denser reconstruction** could close the arc gap; slicing alone cannot certify it.
+- **32_V2 dist = GENUINE FAILURE.** The distal cloud is a **radial-streak MVS scatter, not a
+  coherent wall** (classic low-parallax/bad-depth artifact; borrowed calibration). Coverage is
+  nominally reachable but polar vs ellipse *typically* disagree (median pe 1.71). Needs
+  re-capture/re-reconstruction, not slicing.
+
+**Honest verdict.** The coverage *number* is reachable (25_V1 genuinely, 32_V2 only nominally), but
+neither meets the strict simultaneous gate (cov ≥0.75 AND 3-way spread ≤1.3 AND ratio ≤0.35 AND
+stable). Per the rules I did **not** force a number, hallucinate fill, mix scales, or claim mm /
+Myer-Cotton. 25_V1 is one denser-reconstruction away; 32_V2 is a real capture/recon-quality gap.
+This is consistent with §8j (32_V2 dist was borrowed-calib/provisional; the audit's thick-slab
+"tightness 0.24" was a union artifact of the streak scatter). Only **2_V2** (§8l) yields a
+deliverable-grade ring today.
+
 ## 9. Known limitations / failure cases
 - Uniform (no-throat) segments: boundary is falloff, not geometry → high residual; needs the
   shading term. (Trachea is *harder* for this method than the stenosis.)
