@@ -1,0 +1,75 @@
+{
+  "per_frame": [
+    {
+      "frame": 905,
+      "geom_slope": 0.7825645282844551,
+      "geom_R2": 0.9055517366213113,
+      "consistency": 0.35522388059701493
+    },
+    {
+      "frame": 910,
+      "geom_slope": 0.7443686778922673,
+      "geom_R2": 0.8863368804368488,
+      "consistency": 0.31097560975609756
+    },
+    {
+      "frame": 915,
+      "geom_slope": 0.7402135987820415,
+      "geom_R2": 0.8846591397989763,
+      "consistency": 0.2896341463414634
+    },
+    {
+      "frame": 920,
+      "geom_slope": 0.6983199851378005,
+      "geom_R2": 0.824143198997135,
+      "consistency": 0.3115264797507788
+    },
+    {
+      "frame": 925,
+      "geom_slope": 0.7568423719767253,
+      "geom_R2": 0.8766226236963965,
+      "consistency": 0.3504531722054381
+    },
+    {
+      "frame": 930,
+      "geom_slope": 0.7521550202878201,
+      "geom_R2": 0.9061642954339276,
+      "consistency": 0.4056338028169014
+    },
+    {
+      "frame": 935,
+      "geom_slope": 0.7718367913432607,
+      "geom_R2": 0.9104586308768442,
+      "consistency": 0.3687315634218289
+    },
+    {
+      "frame": 940,
+      "geom_slope": 0.7799406550296868,
+      "geom_R2": 0.8864659803003245,
+      "consistency": 0.3433734939759036
+    }
+  ],
+  "verdict": {
+    "n_frames": 8,
+    "geom_slope": {
+      "mean": 0.753,
+      "std": 0.025,
+      "cov_pct": 3.4
+    },
+    "geom_R2": {
+      "mean": 0.885,
+      "std": 0.026,
+      "cov_pct": 2.9
+    },
+    "consistency": {
+      "mean": 0.342,
+      "std": 0.035,
+      "cov_pct": 10.2
+    },
+    "note": "slope~1 & high R^2 => photometric relative depth follows the tube shape d~1/sin(alpha); consistency = radial log-gradient positive & angularly consistent (geometry, not texture)",
+    "shape_match": true,
+    "angularly_consistent": false,
+    "stable_across_frames": true,
+    "cue_usable_within_frame": false
+  }
+}

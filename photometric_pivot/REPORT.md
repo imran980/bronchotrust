@@ -53,14 +53,41 @@ close that door — but the physics baseline already failing tempers expectation
    not the tube; no per-frame photometric calibration (light-falloff model, vignetting, gamma,
    fixed exposure) is available in this footage.
 
+## 4b. Corrected within-frame test (Test 4) — changes the conclusion
+`test4_gradient_depth.py`. The prior tests had two real flaws: raw brightness (exposure-dependent)
+and cross-frame absolute CSA. The corrected test uses the **radial log-intensity gradient**
+`d/dr log(B)` (a multiplicative exposure/gain on B is an additive constant on log B → 0 gradient →
+**exposure-invariant**), works **within each frame**, and compares only the **scale-free shape** of
+the recovered relative depth against the tube-geometry prediction `d(α) ∝ 1/sin(α)` (α = ray angle
+from the lumen axis), across 8 proximal frames (905–940).
+
+**Result — the corrected test does NOT fail:**
+- **A stable, tube-geometry-consistent depth cue exists.** The angularly-averaged photometric depth
+  follows the tube shape with **R² = 0.885**, and it is remarkably **reproducible across the 8
+  frames** (slope CoV **3.4 %**, R² CoV **2.9 %**; the curves overlap). Tests 1–3 missed this
+  because raw brightness + cross-frame CSA discard it.
+- **But it is aggregate-only and biased.** Per-direction angular consistency is only **0.34** —
+  individual radial lines are texture/albedo-dominated, so the cue needs **angular averaging**. And
+  the falloff **slope is 0.75, not 1**, with flattening at the wall (oblique-view shading +
+  vignetting) — a *biased* version of the ideal tube that would need calibration to be metric.
+
 ## 5. Next recommendation
-**NO-GO. Do not build a full photometric-geometric airway model on this footage now.** Per the
-decision rule (wrong ordering + a general learned model unstable ⇒ photometry not reliable without
-calibration). Concretely:
-- Photometry-**alone** is not a substitute for parallax here; the COLMAP/parallax path remains the
-  reliable one where parallax is adequate (2_V2 distal; the ~32 % lower-bound obstruction stands).
-- If photometry is revisited later (low priority), the *minimum* prerequisites are (a) a real
-  **endoscopy-trained** depth model (PPSNet/LightDepth) tested properly, and (b) **photometric
-  calibration** — a measured light-falloff model, vignetting correction, and fixed/known exposure —
-  none of which this footage provides. Do **not** invest in a full bundle-adjustment photometric
-  method before those are in hand.
+**REVISED: NOT a clean NO-GO — CONDITIONAL. Photometry is not "dead" on this footage, but it is not
+directly usable yet.** The corrected within-frame `d/dr log(B)` cue carries a **stable,
+tube-geometry-consistent** depth signal (R² 0.885, slope CoV 3 %), reproducible across neighboring
+frames — a genuine signal the earlier tests hid. However it is **aggregate-only** (per-direction
+texture noise) and **biased** (slope 0.75, wall flattening), and it has **not** been shown to
+resolve the actual narrowing.
+
+Concretely, before building any photometric-geometric method:
+1. **One more targeted test:** apply the *angularly-aggregated, calibrated* cue and check whether it
+   tracks the **known proximal < distal narrowing** (the clinically relevant discrimination this
+   within-frame test deliberately did not address). Only a *yes* justifies a full method.
+2. **Calibrate the falloff** — model the shading (n·l), vignetting, and the non-unit slope — so the
+   biased cue becomes metric/relative-consistent.
+3. Keep it as an **auxiliary term to parallax**, not a replacement: COLMAP/parallax remains the
+   reliable geometry where parallax is adequate (2_V2 distal; the ~32 % lower-bound obstruction
+   stands). Do **not** invest in a full bundle-adjustment photometric method before step 1 passes.
+
+_(The earlier NO-GO in §5 applied to the naive raw-brightness / cross-frame CSA formulation and the
+general pretrained model; the corrected within-frame gradient test above supersedes that verdict.)_

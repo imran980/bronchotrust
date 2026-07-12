@@ -11,3 +11,9 @@ test2_invsq,stable,True
 test3_pretrained,CSA_ratio_prox/dist,2.082
 test3_pretrained,ordering_correct,False
 test3_pretrained,stable,False
+test4_gradient,geom_R2,0.885
+test4_gradient,geom_slope,0.753
+test4_gradient,slope_CoV_pct,3.4
+test4_gradient,angular_consistency,0.342
+test4_gradient,shape_match,True
+test4_gradient,stable_across_frames,True
