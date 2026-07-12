@@ -1,0 +1,13 @@
+test,metric,value
+colmap_sanity,CSA_ratio_prox/dist,0.68
+colmap_sanity,obstruction_CSA_pct,32.0
+test1,cue_present,True
+test1,median_monotonicity,0.831
+test1,r60_prox_px,313.3
+test1,r60_dist_px,305.9
+test2_invsq,CSA_ratio_prox/dist,1.275
+test2_invsq,ordering_correct,False
+test2_invsq,stable,True
+test3_pretrained,CSA_ratio_prox/dist,2.082
+test3_pretrained,ordering_correct,False
+test3_pretrained,stable,False

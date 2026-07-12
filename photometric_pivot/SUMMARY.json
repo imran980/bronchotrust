@@ -1,0 +1,34 @@
+{
+  "video": "2_V2",
+  "units": "scene/relative units only (NO mm, NO Myer-Cotton, NOT validation)",
+  "COLMAP_sanity_reference": {
+    "CSA_ratio_prox_over_dist": 0.68,
+    "DCE_ratio": 0.82,
+    "obstruction_CSA_pct": 32.0,
+    "note": "proximal SMALLER than distal (lower bound)"
+  },
+  "test1_cue": {
+    "cue_present": true,
+    "median_monotonicity": 0.831,
+    "r60_prox_px": 313.3,
+    "r60_dist_px": 305.9,
+    "finding": "near-light falloff cue EXISTS (monotone) but does NOT discriminate prox vs distal (profiles overlap, r60 ~equal)"
+  },
+  "test2_inverse_square": {
+    "CSA_ratio_prox_over_dist": 1.275,
+    "implied_obstruction_pct": -27.5,
+    "ordering_correct": false,
+    "ratio_near_colmap": false,
+    "stable": true,
+    "finding": "WRONG ordering (proximal appears WIDER); stably wrong"
+  },
+  "test3_pretrained": {
+    "model": "depth-anything/Depth-Anything-V2-Small-hf",
+    "endoscopy_specific": false,
+    "CSA_ratio_prox_over_dist": 2.082,
+    "ordering_correct": false,
+    "stable": false,
+    "finding": "general (non-endoscopic) model: WRONG ordering AND unstable (distal CoV 63%); depth responds to FOV disk/bezel not tube geometry"
+  },
+  "DECISION": "NO-GO: photometry is NOT reliable on this footage without calibration (wrong ordering in the physics baseline + a general learned model; the raw near-light cue exists but is non-discriminative). Do NOT build a full photometric-geometric airway model on this footage now."
+}
