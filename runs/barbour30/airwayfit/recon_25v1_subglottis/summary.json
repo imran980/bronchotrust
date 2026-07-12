@@ -1,0 +1,18 @@
+{
+  "window": [
+    340,
+    470
+  ],
+  "n_frames": 128,
+  "n_registered": 128,
+  "reg_span": [
+    340,
+    470
+  ],
+  "n_prox": 48,
+  "n_dist": 65,
+  "connected": true,
+  "n_sparse": 3539,
+  "fused_geometric": 426846,
+  "fused_photometric": 211193
+}

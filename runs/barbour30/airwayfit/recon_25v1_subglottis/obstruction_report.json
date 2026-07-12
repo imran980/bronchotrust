@@ -1,0 +1,24 @@
+{
+  "video": "25_V1",
+  "model": "one connected subglottic model (recon_25v1_subglottis)",
+  "connected": true,
+  "reg_span": [
+    340,
+    470
+  ],
+  "n_prox": 48,
+  "n_dist": 65,
+  "fusion": "geometric",
+  "units": "scene units (within this one connected model)",
+  "n_slices": 214,
+  "n_accepted": 0,
+  "n_stable_accepted": 0,
+  "best_ring_attempt": {
+    "cov": 1.0,
+    "ratio": 0.365,
+    "spread": 1.753,
+    "pe": 1.177,
+    "DCE": 4.758
+  },
+  "verdict": "CONNECTED MODEL BUILT but NO ring meets accept+stability -> the capture-marginal proximal frames degrade the connected reconstruction (rings sparse/unstable). Per the rules: proximal ring quality only, % obstruction NOT computed."
+}

@@ -505,6 +505,37 @@ denser frames + exhaustive matching + fresh MVS (the depth maps the old cloud ha
 refined medial-axis and declutter. This confirms §8m's diagnosis — 25_V1 distal was one
 denser-reconstruction away, and it got there.
 
+## 8o. 25_V1 SAME-MODEL % OBSTRUCTION — connected model built, but not measurable (proximal marginal)
+`reconstruct_25v1_subglottis.py` + `obstruction_25v1.py`. Built ONE connected 25_V1 subglottic model
+spanning proximal narrowest + bridge + distal reference (frames 340–470, 128 sharpness-filtered +
+CLAHE frames, pinned intrinsics, standard SIFT, plain exhaustive, fresh dense MVS + dual fusion).
+
+**Requirement 1 met:** the model IS connected — **128/128 frames registered, span 340–470, 48
+proximal (≤388) + 65 distal (≥405) in ONE model**, 3539 sparse / 427k dense points.
+
+**But the rings in it are NOT cleanly measurable → NO % obstruction** (per the fallback rule):
+- The airway is *curved* over this span, so the single-axis projection centerline **tangles**
+  (its u-range 2.5–14 didn't even match the cameras −4.5…7.4). A camera-trajectory-backbone
+  medial-axis centerline handles the curve, but along it the CSA profile **bounces** (DCE 4→31,
+  ellipse estimator spikes to 2·10⁴) and **0 slices** pass accept+stability.
+- Best ring attempt: cov 100% but **ratio 0.36, spread 1.75** (hull-inflated even after declutter),
+  a noisy scatter — far from the distal-only re-recon's clean 1.26/0.23.
+
+**Root cause:** including the **capture-marginal proximal frames** (25_V1 prox triangulation
+2.35–2.8°, §8j) in the bundle adjustment **degrades the whole connected reconstruction** — the
+distal region that was a clean accepted ring on its own (§8n, DCE 4.60, cov 100%, spread 1.26)
+becomes noisy once the marginal proximal frames are added. There is no way around this with the
+current data: a same-model % *requires* both rings in one model, but the proximal simply can't be
+cleanly reconstructed, and its inclusion poisons the model.
+
+**Verdict:** report proximal ring quality only (best attempt cov 100%, ratio 0.36, spread 1.75, DCE
+4.76 scene units — REJECTED), **% obstruction NOT computed**. Honoring the rules: no
+cross-reconstruction comparison, no Sim3, no mixing the clean distal-only DCE with a proximal DCE.
+This is consistent with the whole project: **only 2_V2 yields a defensible same-model % obstruction**
+(§8l, ~32% CSA lower bound); 25_V1's proximal subglottis is capture-marginal, so its within-video %
+is not defensible — the distal *ring* is measurable (§8n) but the *narrowing* is not.
+Figure `runs/.../recon_25v1_subglottis/obstruction_25v1.png`.
+
 ## 9. Known limitations / failure cases
 - Uniform (no-throat) segments: boundary is falloff, not geometry → high residual; needs the
   shading term. (Trachea is *harder* for this method than the stenosis.)
