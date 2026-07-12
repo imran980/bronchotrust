@@ -17,3 +17,7 @@ test4_gradient,slope_CoV_pct,3.4
 test4_gradient,angular_consistency,0.342
 test4_gradient,shape_match,True
 test4_gradient,stable_across_frames,True
+step1,R_photo_ratio_prox/dist,1.006
+step1,spearman_R_photo_vs_COLMAP_DCE,0.002
+step1,wall_brightness_ratio_prox/dist,1.254
+step1,tracks_narrowing,False

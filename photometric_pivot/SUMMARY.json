@@ -30,7 +30,7 @@
     "stable": false,
     "finding": "general (non-endoscopic) model: WRONG ordering AND unstable (distal CoV 63%); depth responds to FOV disk/bezel not tube geometry"
   },
-  "DECISION": "REVISED from NO-GO to CONDITIONAL: photometry is NOT dead. A STABLE, tube-geometry-consistent within-frame depth cue exists in d/dr log(B) (R^2 0.885, slope CoV 3%), reproducible across frames -- the raw brightness / cross-frame tests (1-3) missed it. But it is AGGREGATE-ONLY (per-direction texture-dominated) and BIASED (slope 0.75, wall flattening), so NOT directly usable: it needs angular aggregation + shading/vignetting calibration, and it has NOT been shown to resolve the actual narrowing. Recommend one more targeted test (does the calibrated aggregate cue track the known proximal<distal narrowing?) before building a photometric-geometric method.",
+  "DECISION": "FINAL: photometry encodes a genuine STABLE within-frame depth-SHAPE cue (Test 4, R^2 0.885) but CANNOT RESOLVE THE NARROWING (Step 1, Spearman rho=0.00, wrong/absent ordering) -- radius is scale-ambiguous within a frame and the cross-frame brightness handle is auto-gain-flattened + noisy. So photometry is NOT a standalone substitute for parallax on this footage; do NOT build a photometric obstruction method. A scale reference (parallax or a known in-frame object) is required. At best the within-frame shape is a weak auxiliary prior to parallax, with no evidence it helps.",
   "test4_corrected_within_frame_gradient": {
     "method": "radial d/dr log(B) (exposure-invariant), within-frame, scale-free shape vs tube 1/sin(alpha)",
     "geom_R2": 0.885,
@@ -42,5 +42,14 @@
     "angularly_consistent": false,
     "stable_across_frames": true,
     "finding": "CORRECTED test does NOT fail: angularly-averaged photometric depth follows tube geometry (R^2 0.885) with a STABLE biased slope (0.75, CoV 3%), reproducible across 8 neighboring frames. BUT per-direction angular consistency 0.34 (texture-dominated -> aggregate-only) and slope!=1 (needs shading/vignetting calibration)."
+  },
+  "step1_discrimination": {
+    "R_photo_ratio_prox/dist": 1.006,
+    "colmap_DCE_ratio": 0.825,
+    "spearman_R_photo_vs_COLMAP_DCE": 0.002,
+    "spearman_p": 0.9949,
+    "wall_brightness_ratio_prox/dist": 1.254,
+    "tracks_narrowing": false,
+    "finding": "does NOT track the narrowing (Spearman rho=0.00, prox/dist ratio 1.01 vs COLMAP 0.82). Within-frame depth shape is scale-free in R; the only R handle (absolute brightness) is auto-gain-flattened + noisy."
   }
 }

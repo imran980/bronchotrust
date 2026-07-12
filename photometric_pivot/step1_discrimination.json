@@ -1,0 +1,115 @@
+{
+  "per_frame": [
+    {
+      "frame": 900,
+      "B_annulus": 0.12053295969963074,
+      "wall_brightness": 0.2506564259529114,
+      "R_photo": 2.880362033843994
+    },
+    {
+      "frame": 910,
+      "B_annulus": 0.11166933178901672,
+      "wall_brightness": 0.2393738031387329,
+      "R_photo": 2.992492198944092
+    },
+    {
+      "frame": 920,
+      "B_annulus": 0.10552401840686798,
+      "wall_brightness": 0.23202157020568848,
+      "R_photo": 3.078395128250122
+    },
+    {
+      "frame": 930,
+      "B_annulus": 0.1400543749332428,
+      "wall_brightness": 0.26578009128570557,
+      "R_photo": 2.672093391418457
+    },
+    {
+      "frame": 940,
+      "B_annulus": 0.11648255586624146,
+      "wall_brightness": 0.24233326315879822,
+      "R_photo": 2.9300129413604736
+    },
+    {
+      "frame": 950,
+      "B_annulus": 0.09373752027750015,
+      "wall_brightness": 0.21652103960514069,
+      "R_photo": 3.2662036418914795
+    },
+    {
+      "frame": 960,
+      "B_annulus": 0.09415017813444138,
+      "wall_brightness": 0.2298719435930252,
+      "R_photo": 3.259037971496582
+    },
+    {
+      "frame": 970,
+      "B_annulus": 0.08659298717975616,
+      "wall_brightness": 0.20327681303024292,
+      "R_photo": 3.3982760906219482
+    },
+    {
+      "frame": 980,
+      "B_annulus": 0.08548050373792648,
+      "wall_brightness": 0.2164791077375412,
+      "R_photo": 3.4203176498413086
+    },
+    {
+      "frame": 990,
+      "B_annulus": 0.09873411804437637,
+      "wall_brightness": 0.2190655767917633,
+      "R_photo": 3.1824851036071777
+    },
+    {
+      "frame": 1000,
+      "B_annulus": 0.09348295629024506,
+      "wall_brightness": 0.18641513586044312,
+      "R_photo": 3.2706477642059326
+    },
+    {
+      "frame": 1010,
+      "B_annulus": 0.09602409601211548,
+      "wall_brightness": 0.19292975962162018,
+      "R_photo": 3.227081298828125
+    },
+    {
+      "frame": 1020,
+      "B_annulus": 0.11785496771335602,
+      "wall_brightness": 0.21391525864601135,
+      "R_photo": 2.912903308868408
+    },
+    {
+      "frame": 1030,
+      "B_annulus": 0.12010326236486435,
+      "wall_brightness": 0.1932564675807953,
+      "R_photo": 2.885510206222534
+    },
+    {
+      "frame": 1040,
+      "B_annulus": 0.15452095866203308,
+      "wall_brightness": 0.23454974591732025,
+      "R_photo": 2.5439367294311523
+    }
+  ],
+  "test": "step1 discrimination -- angularly-aggregated photometric radius proxy vs known narrowing",
+  "COLMAP_sanity": {
+    "prox_DCE": 1.27,
+    "dist_DCE": 1.54,
+    "DCE_ratio_prox/dist": 0.825
+  },
+  "exposure_check": {
+    "wall_brightness_prox": 0.2423,
+    "wall_brightness_dist": 0.1933,
+    "ratio_prox/dist": 1.254,
+    "note": "if the light/exposure gain were constant AND physics held, a narrower proximal wall (R~0.82x) should be ~1/0.82^2=1.49x BRIGHTER; ~1.0 means auto-gain flattened it"
+  },
+  "R_photo_prox": 2.93,
+  "R_photo_dist": 2.9129,
+  "R_photo_ratio_prox_over_dist": 1.006,
+  "spearman_R_photo_vs_COLMAP_DCE": 0.002,
+  "spearman_p": 0.9949,
+  "ordering_correct_prox_lt_dist": false,
+  "ratio_near_colmap_0p82": false,
+  "tracks_narrowing": false,
+  "verdict": "does NOT track the narrowing (wrong ordering and/or no correlation) -- consistent with auto-gain flattening the only R handle (absolute brightness); photometry cannot resolve the narrowing on this footage without a scale reference"
+}

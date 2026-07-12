@@ -91,3 +91,30 @@ Concretely, before building any photometric-geometric method:
 
 _(The earlier NO-GO in §5 applied to the naive raw-brightness / cross-frame CSA formulation and the
 general pretrained model; the corrected within-frame gradient test above supersedes that verdict.)_
+
+## 6. Step 1 — does the calibrated/aggregated cue track the KNOWN narrowing? (`step1_discrimination.py`)
+The decisive follow-up: within-frame the tube depth *shape* `d(α) ∝ R/sin(α)` is **scale-free in R**
+(a narrow tube close and a wide tube far look identical), so the only handle on the radius is
+**absolute wall brightness at a fixed viewing angle** (`B(α₀) ∝ I/R²`), which needs the light/exposure
+gain `I` roughly constant. I formed an angularly-aggregated photometric radius proxy
+`R_photo ∝ 1/√(B at a fixed annulus)` over a proximal→distal sweep (frames 900–1040) and compared it
+to the COLMAP DCE ramp (proximal 1.27 → distal 1.54).
+
+**Result — it does NOT track the narrowing:**
+- **Spearman ρ = 0.00 (p = 0.99)** between `R_photo` and COLMAP DCE across the sweep; the proxy is
+  noise relative to the true widening and even trends **the wrong way** distally.
+- **Ordering wrong / absent:** `R_photo` prox/dist = **1.01** (should be ≈ 0.82); no separation.
+- **Exposure check:** angular-median wall brightness bounces 0.19–0.27 with no monotonic trend. The
+  proximal/distal endpoint ratio is 1.25 (right direction — narrower ⇒ brighter — but far below the
+  ~1.49 physics prediction and **within the frame-to-frame noise**), i.e. **auto-gain + oblique
+  shading flatten the only radius handle**.
+
+**Conclusion of Step 1 (and of the whole audit):** photometry on this footage encodes a genuine,
+stable *within-frame depth-shape* cue (§4b) but **cannot resolve the actual narrowing** — the radius
+is scale-ambiguous within a frame, and the cross-frame brightness signal is auto-gain-flattened and
+too noisy. So **photometry is not a standalone substitute for parallax here.** At best the
+within-frame shape could be a *weak auxiliary prior* alongside parallax; Step 1 gives **no evidence**
+it would improve the narrowing measurement. Final recommendation: **do not build a photometric or
+photometric-geometric method to measure obstruction on this footage.** COLMAP/parallax remains the
+only reliable path where parallax is adequate; a scale reference (parallax, or a known in-frame
+object) is required for any radius/obstruction — brightness alone will not supply it.
