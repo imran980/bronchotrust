@@ -1,0 +1,12 @@
+stage,setting,dce_err_pct,csa_err_pct,convergence,dce_sigma_mm,n_detected
+clean,joint,0.478,0.954,,0.0021,
+ablation,joint,0.478,0.954,,,
+ablation,contour_only,0.481,0.959,,,
+ablation,photo_only,8859.821,802683.983,,,
+corruption,contour_noise_px=0.0,0.478,0.954,1.00,0.0021,16
+corruption,contour_noise_px=1.0,0.463,0.925,1.00,0.0022,16
+corruption,contour_noise_px=2.0,0.449,0.897,1.00,0.0032,16
+corruption,specular_frac=0.1,0.478,0.953,1.00,0.0021,16
+corruption,albedo_var=0.3,0.450,0.898,1.00,0.0021,16
+corruption,pose_pert_mm=0.05,0.130,0.261,1.00,0.0034,16
+corruption,ALL=None,0.160,0.320,1.00,0.0045,16

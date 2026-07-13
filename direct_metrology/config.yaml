@@ -1,0 +1,33 @@
+# Deterministic config for the smallest direct-metrology prototype.
+# One airway cross-section (the stenosis THROAT); circular model only; known intrinsics + fixed poses.
+phantom:
+  R_ref_mm: 6.0            # wide reference radius
+  r_throat_mm: 3.0         # GT throat radius  -> CSA = pi*9 = 28.274 mm^2, DCE = 6.0 mm
+  length_mm: 40.0
+  stenosis_z_mm: 25.0      # throat axial position (world z, mm)
+  sigma_mm: 4.0            # constriction width
+  n_cameras: 16
+  cam_depth_mm: 12.0        # cameras this far BEHIND the throat
+  cam_cone_deg: 8.0        # viewing-cone half-spread (parallax); larger = easier
+  albedo: 1.0
+  seed: 0
+  intrinsics: {fx: 500.0, fy: 500.0, cx: 320.0, cy: 240.0, width: 640, height: 480}
+
+optimizer:
+  lambda_contour: 1.0      # PRIMARY occluding-contour reprojection
+  lambda_photo: 0.02       # WEAK gain-invariant log-gradient photometric
+  max_nfev: 4000
+  wall_sample_offset: 1.15 # sample image shading at (offset * r) -> on the lit wall, just outside the aperture
+
+gates:
+  n_random_init: 60
+  clean_tol_pct: 5.0
+  corrupt_tol_pct: 10.0
+  convergence_min: 0.95
+  init_spread: {center_mm: 3.0, radius_frac: 0.4, axis_deg: 15.0}
+
+corruptions:
+  contour_noise_px: [0.0, 1.0, 2.0]
+  specular_frac:    [0.0, 0.10]
+  albedo_var:       [0.0, 0.30]
+  pose_pert_mm:     [0.0, 0.05]

@@ -1,0 +1,275 @@
+{
+  "overall_pass": true,
+  "criteria": {
+    "clean_below_5pct": true,
+    "corrupt_below_10pct": true,
+    "convergence_ge_95pct": true,
+    "uncertainty_increases": true,
+    "all_correctness_gates": true,
+    "clean_dce_sigma": 0.002083252695842502,
+    "worst_dce_sigma": 0.004503260387815972
+  },
+  "gates": [
+    {
+      "name": "gate1_gt_init",
+      "passed": true,
+      "exact_contour_dce_err_pct": 0.00895647603524156,
+      "pipeline_dce_err_pct": 0.4779497981235596,
+      "pipeline_csa_err_pct": 0.9536152361518626,
+      "n_detected": 16,
+      "n_views": 16,
+      "note": "(a) estimator on exact contours ~0; (b) rendered+detected within clean tol"
+    },
+    {
+      "name": "gate2_random_inits",
+      "passed": true,
+      "n": 60,
+      "convergence_rate": 0.9666666666666667,
+      "min_required": 0.95,
+      "dce_mean": 7.229697762458317,
+      "dce_std": 6.778020206136381,
+      "note": "converged := success AND |DCE-DCE_ref|/DCE_ref < 5%"
+    },
+    {
+      "name": "gate3_sim3_invariance",
+      "passed": true,
+      "max_ratio_err_pct": 0.03448087222379659,
+      "checks": [
+        {
+          "s": 1.0,
+          "dce": 5.972731515764143,
+          "ratio_to_expected": 1.0002358779869551,
+          "ratio_err_pct": 0.02358779869551242
+        },
+        {
+          "s": 0.5,
+          "dce": 2.9860494190435305,
+          "ratio_to_expected": 1.0001299253068208,
+          "ratio_err_pct": 0.01299253068207662
+        },
+        {
+          "s": 2.0,
+          "dce": 11.943066702278621,
+          "ratio_to_expected": 1.000035224861609,
+          "ratio_err_pct": 0.003522486160889571
+        },
+        {
+          "s": 3.3,
+          "dce": 19.71216052202253,
+          "ratio_to_expected": 1.000344808722238,
+          "ratio_err_pct": 0.03448087222379659
+        }
+      ],
+      "note": "recovered DCE / (s*DCE_ref) must equal 1 for every Sim(3) -> scale-free ratio invariant"
+    },
+    {
+      "name": "gate4_ablations",
+      "passed": true,
+      "joint": {
+        "dce": 5.971323012112586,
+        "csa": 28.004705526486,
+        "dce_err_pct": 0.4779497981235596,
+        "csa_err_pct": 0.9536152361518626,
+        "contour_rms_px": 1.146215218655324
+      },
+      "contour_only": {
+        "dce": 5.971165951391736,
+        "csa": 28.003232358351138,
+        "dce_err_pct": 0.4805674768043981,
+        "csa_err_pct": 0.9588255026111662,
+        "contour_rms_px": 1.1462263951069742
+      },
+      "photo_only": {
+        "dce": 537.5892798700395,
+        "csa": 226981.82366877468,
+        "dce_err_pct": 8859.821331167324,
+        "csa_err_pct": 802683.9828644102,
+        "contour_rms_px": 41211598111.94521
+      },
+      "note": "joint & contour-only accurate; photo-only alone cannot recover radius (weak term, by design)"
+    },
+    {
+      "name": "gate5_jacobian_cov",
+      "passed": true,
+      "reproducible": true,
+      "jac_rank": 6,
+      "jac_cond": 8.635726096106195,
+      "singular_values": [
+        3144.489115756962,
+        3113.5164660946493,
+        1485.1896116653,
+        1151.2681868710686,
+        957.4860436302539,
+        364.125619636639
+      ],
+      "r_var": 1.084985448683763e-06,
+      "csa_var": 0.00038182537595916313,
+      "dce_var": 4.339941794735052e-06,
+      "note": "two runs identical to 1e-9; J full-rank(6) -> throat identifiable; cov finite"
+    },
+    {
+      "name": "gate6_determinism",
+      "passed": true,
+      "images_identical": true,
+      "fit_identical": true,
+      "note": "render+detect+fit reproduce bit-for-bit"
+    }
+  ],
+  "clean_evaluation": {
+    "csa_gt_mm2": 28.274333882308138,
+    "csa_pred_mm2": 28.004705526486,
+    "dce_gt_mm": 6.0,
+    "dce_pred_mm": 5.971323012112586,
+    "csa_abs_err_mm2": 0.26962835582213884,
+    "dce_abs_err_mm": 0.028676987887413574,
+    "csa_err_pct": 0.9536152361518626,
+    "dce_err_pct": 0.4779497981235596,
+    "csa_var": 0.00038182537595916313,
+    "dce_var": 4.339941794735052e-06,
+    "contour_rms_px": 1.146215218655324,
+    "photo_rms": 0.06468875155413209,
+    "obstruction_pct": {
+      "method_pct": 0.0,
+      "ct_pct": 0.0,
+      "abs_error_pct": 0.0
+    },
+    "scale_recovered": 1.0,
+    "gt_checksum": "719945ac102b549c"
+  },
+  "sensitivity": [
+    {
+      "axis": "contour_noise_px",
+      "level": 0.0,
+      "n_detected": 16,
+      "dce_err_pct": 0.4779497981235596,
+      "csa_err_pct": 0.9536152361518626,
+      "dce_sigma": 0.002083252695842502,
+      "contour_rms_px": 1.146215218655324,
+      "convergence": 1.0
+    },
+    {
+      "axis": "contour_noise_px",
+      "level": 1.0,
+      "n_detected": 16,
+      "dce_err_pct": 0.4634598933753657,
+      "csa_err_pct": 0.9247718360230527,
+      "dce_sigma": 0.002197137871133174,
+      "contour_rms_px": 1.517998074844631,
+      "convergence": 1.0
+    },
+    {
+      "axis": "contour_noise_px",
+      "level": 2.0,
+      "n_detected": 16,
+      "dce_err_pct": 0.4494345458951147,
+      "csa_err_pct": 0.8968491776797917,
+      "dce_sigma": 0.003197122111548775,
+      "contour_rms_px": 2.2922415711789483,
+      "convergence": 1.0
+    },
+    {
+      "axis": "specular_frac",
+      "level": 0.1,
+      "n_detected": 16,
+      "dce_err_pct": 0.4775202571881465,
+      "csa_err_pct": 0.9527602584160384,
+      "dce_sigma": 0.002125193173906478,
+      "contour_rms_px": 1.146036932308398,
+      "convergence": 1.0
+    },
+    {
+      "axis": "albedo_var",
+      "level": 0.3,
+      "n_detected": 16,
+      "dce_err_pct": 0.4501977422827726,
+      "csa_err_pct": 0.8983687044939901,
+      "dce_sigma": 0.0021025627351083714,
+      "contour_rms_px": 1.1481743900550039,
+      "convergence": 1.0
+    },
+    {
+      "axis": "pose_pert_mm",
+      "level": 0.05,
+      "n_detected": 16,
+      "dce_err_pct": 0.13018220752634888,
+      "csa_err_pct": 0.26053388912426806,
+      "dce_sigma": 0.003433996161089913,
+      "contour_rms_px": 2.4631166207554966,
+      "convergence": 1.0
+    },
+    {
+      "axis": "ALL",
+      "level": null,
+      "n_detected": 16,
+      "dce_err_pct": 0.15979718114052707,
+      "csa_err_pct": 0.3198497136720511,
+      "dce_sigma": 0.004503260387815972,
+      "contour_rms_px": 3.180848566959461,
+      "convergence": 1.0
+    }
+  ],
+  "figures": [
+    "fig_detection.png",
+    "fig_convergence.png",
+    "fig_sensitivity.png"
+  ],
+  "config": {
+    "phantom": {
+      "R_ref_mm": 6.0,
+      "r_throat_mm": 3.0,
+      "length_mm": 40.0,
+      "stenosis_z_mm": 25.0,
+      "sigma_mm": 4.0,
+      "n_cameras": 16,
+      "cam_depth_mm": 12.0,
+      "cam_cone_deg": 8.0,
+      "albedo": 1.0,
+      "seed": 0,
+      "intrinsics": {
+        "fx": 500.0,
+        "fy": 500.0,
+        "cx": 320.0,
+        "cy": 240.0,
+        "width": 640,
+        "height": 480
+      }
+    },
+    "optimizer": {
+      "lambda_contour": 1.0,
+      "lambda_photo": 0.02,
+      "max_nfev": 4000,
+      "wall_sample_offset": 1.15
+    },
+    "gates": {
+      "n_random_init": 60,
+      "clean_tol_pct": 5.0,
+      "corrupt_tol_pct": 10.0,
+      "convergence_min": 0.95,
+      "init_spread": {
+        "center_mm": 3.0,
+        "radius_frac": 0.4,
+        "axis_deg": 15.0
+      }
+    },
+    "corruptions": {
+      "contour_noise_px": [
+        0.0,
+        1.0,
+        2.0
+      ],
+      "specular_frac": [
+        0.0,
+        0.1
+      ],
+      "albedo_var": [
+        0.0,
+        0.3
+      ],
+      "pose_pert_mm": [
+        0.0,
+        0.05
+      ]
+    }
+  },
+  "note": "direct-metrology smallest prototype; synthetic phantom only; no real video; no novelty/clinical claim"
+}
