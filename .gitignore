@@ -60,3 +60,5 @@ runs/barbour30/airwayfit/recon_25v1_distal/*.db
 runs/barbour30/airwayfit/recon_25v1_subglottis/dense/
 runs/barbour30/airwayfit/recon_25v1_subglottis/images/
 runs/barbour30/airwayfit/recon_25v1_subglottis/*.db
+evaluation/tests/_selftest_out/
+evaluation/**/__pycache__/

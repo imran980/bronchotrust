@@ -1,0 +1,8 @@
+# extra deps for the evaluation framework (beyond the base depth-eval env)
+numpy
+scipy
+scikit-image
+nibabel        # CT NIfTI reader
+pydicom        # CT DICOM reader
+matplotlib
+pytest         # self-test suite
