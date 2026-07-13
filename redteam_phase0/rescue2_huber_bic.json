@@ -1,0 +1,55 @@
+{
+  "verdict": {
+    "worst_fixed9_L2": 44.6,
+    "worst_BIC_L2": 0.3,
+    "BIC_clears_10pct": true,
+    "note": "if BIC-adaptive bias < 10% while fixed-9DOF was 44.6%, the failure was albedo-DOF choice, not degeneracy"
+  },
+  "rows": [
+    {
+      "albedo": "const",
+      "fixed9_L2": 0.0,
+      "fixed9_Huber": 0.0,
+      "BIC_L2_bias": 0.0,
+      "BIC_L2_DOF": 3,
+      "BIC_Huber_bias": 0.0,
+      "BIC_Huber_DOF": 3
+    },
+    {
+      "albedo": "gradient",
+      "fixed9_L2": -0.0,
+      "fixed9_Huber": -0.0,
+      "BIC_L2_bias": -0.0,
+      "BIC_L2_DOF": 3,
+      "BIC_Huber_bias": -0.0,
+      "BIC_Huber_DOF": 3
+    },
+    {
+      "albedo": "stripes",
+      "fixed9_L2": 44.6,
+      "fixed9_Huber": 52.2,
+      "BIC_L2_bias": -0.3,
+      "BIC_L2_DOF": 13,
+      "BIC_Huber_bias": -0.6,
+      "BIC_Huber_DOF": 13
+    },
+    {
+      "albedo": "lowfreq",
+      "fixed9_L2": 0.1,
+      "fixed9_Huber": 0.1,
+      "BIC_L2_bias": 0.1,
+      "BIC_L2_DOF": 5,
+      "BIC_Huber_bias": 0.1,
+      "BIC_Huber_DOF": 5
+    },
+    {
+      "albedo": "highfreq",
+      "fixed9_L2": 0.0,
+      "fixed9_Huber": 0.0,
+      "BIC_L2_bias": 0.0,
+      "BIC_L2_DOF": 3,
+      "BIC_Huber_bias": 0.0,
+      "BIC_Huber_DOF": 3
+    }
+  ]
+}
