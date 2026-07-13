@@ -1,0 +1,23 @@
+{
+  "A": {
+    "r_fit": 5.0,
+    "CSA_bias_pct": -0.0,
+    "rms": 2.1831641894063984e-13,
+    "success": true
+  },
+  "B": {
+    "contour_ellipse_area_rel_diff": 0.0,
+    "obs_loggrad_sorted_diff": 0.000328,
+    "CSA_over_s2CSAtrue": 1.0,
+    "CSA_scale_error_pct": -0.0,
+    "ratio_invariant": true
+  },
+  "C": {
+    "common_mode_CSA_bias_mean": -0.027,
+    "common_mode_CSA_bias_std": 0.083,
+    "max_abs": 0.307
+  },
+  "passB": true,
+  "passC": true,
+  "sim_correct": true
+}

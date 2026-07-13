@@ -1,0 +1,16 @@
+{
+  "units": "length=scene units; angle=rad; pixel=f*(x_cam/z_cam) with f=800; CSA=pi*r^2 (scene^2)",
+  "loss": "E = LAM_BND*||proj(model contour)-observed boundary||^2  +  LAM_SHADE*||dphi logB - dphi logB_hat||^2",
+  "weights": {
+    "LAM_BND": 1.0,
+    "LAM_SHADE": 0.02,
+    "note": "E_bnd primary; E_shade weak & gain-invariant -- matches AIRWAY_FIT_DESIGN 4a/6; E_smooth omitted for single cross-section"
+  },
+  "convergence": {
+    "success_rate": 1.0,
+    "median_nfev": 5.0,
+    "median_rms": 2.549749775104863e-14
+  },
+  "gauge": "free tube pose (O in R^3, axis a) -> global Sim(3) absorbed (verify_sim gate C: common-mode bias -0.03%)",
+  "photometric_residual": "gain-invariant: d/dphi log B removes per-frame albedo*intensity gain (log offset)"
+}
