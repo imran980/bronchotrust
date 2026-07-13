@@ -1,0 +1,72 @@
+{
+  "verdict": {
+    "combined_CSA_std_pct": 14.71,
+    "combined_CSA_bias_pct": 20.96,
+    "sensitivity_ranking": [
+      "translation:10.34%",
+      "rotation:9.13%",
+      "focal:0.0%"
+    ],
+    "PASS": false
+  },
+  "settings": {
+    "combined": {
+      "t": 0.06,
+      "rot": 0.3,
+      "f": 0.01
+    },
+    "translation_only": {
+      "t": 0.06,
+      "rot": 0.0,
+      "f": 0.0
+    },
+    "rotation_only": {
+      "t": 0.0,
+      "rot": 0.3,
+      "f": 0.0
+    },
+    "focal_only": {
+      "t": 0.0,
+      "rot": 0.0,
+      "f": 0.01
+    }
+  },
+  "results": {
+    "combined": {
+      "CSA_mean": 95.00248458198263,
+      "CSA_bias_pct": 20.96,
+      "CSA_std_pct": 14.71,
+      "CSA_p5_p95_pct": [
+        0.9,
+        46.8
+      ]
+    },
+    "translation_only": {
+      "CSA_mean": 90.63380108772151,
+      "CSA_bias_pct": 15.4,
+      "CSA_std_pct": 10.34,
+      "CSA_p5_p95_pct": [
+        0.3,
+        30.5
+      ]
+    },
+    "rotation_only": {
+      "CSA_mean": 75.3420155891211,
+      "CSA_bias_pct": -4.07,
+      "CSA_std_pct": 9.13,
+      "CSA_p5_p95_pct": [
+        -21.3,
+        8.7
+      ]
+    },
+    "focal_only": {
+      "CSA_mean": 78.53978772131123,
+      "CSA_bias_pct": -0.0,
+      "CSA_std_pct": 0.0,
+      "CSA_p5_p95_pct": [
+        -0.0,
+        0.0
+      ]
+    }
+  }
+}

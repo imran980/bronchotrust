@@ -1,0 +1,34 @@
+{
+  "phase": "0 red-team validation",
+  "estimator": "near-light photometric SoR airway cross-section fit, fixed COLMAP poses",
+  "tests": {
+    "test1_model_mismatch": {
+      "PASS": true,
+      "worst_CSA_bias_pct": 7.6,
+      "note": "CSA robust to geometry mismatch (<10%)"
+    },
+    "test2_albedo": {
+      "PASS": false,
+      "worst_CSA_bias_pct": 44.6,
+      "fundamental_coupling": false,
+      "note": "no null-space coupling, but specified 5-10 albedo DOF cannot represent vascular stripes -> 44.6% CSA bias aliased into geometry; unverifiable DOF on real texture"
+    },
+    "test3_pose": {
+      "PASS": false,
+      "combined_CSA_std_pct": 14.7,
+      "combined_CSA_bias_pct": 21.0,
+      "sensitivity": "translation>rotation>>focal",
+      "note": "1/d^2 nonlinearity rectifies pose noise into a +21% CSA bias; worse at our low parallax"
+    },
+    "test4_novelty": {
+      "fundamentally_new": false,
+      "note": "combination of near-light photometric (NFL-BA/LightNeuS/Zaragoza/Sengupta) + SoR + fixed COLMAP/Barbour poses; less general than LightNeuS"
+    }
+  },
+  "overall": "DOES NOT CLEAR PHASE-0 (2 quantitative fails + not novel)",
+  "blocking_changes": [
+    "propagate/jointly-refine pose uncertainty + debias 1/d^2 (Test 3) -- but low parallax is a hard limit",
+    "validate/adapt the albedo model to real vascular texture with bias verification (Test 2)",
+    "reframe as an application of LightNeuS/NFL-BA, not a new estimator (Test 4)"
+  ]
+}
