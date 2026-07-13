@@ -1,0 +1,34 @@
+{
+  "stripe_fundamental_k": 6,
+  "spectrum_top": [
+    6,
+    18,
+    17,
+    10
+  ],
+  "albedo_DOF": [
+    3,
+    5,
+    7,
+    9,
+    11,
+    13,
+    15,
+    17,
+    19,
+    21
+  ],
+  "CSA_bias_pct": [
+    76.8,
+    43.9,
+    43.9,
+    44.6,
+    43.7,
+    -0.3,
+    -0.2,
+    -0.1,
+    -0.0,
+    0.0
+  ],
+  "note": "CSA bias collapses at 13 DOF (6 harmonics) = exactly when the albedo basis first covers the stripe fundamental k=6"
+}

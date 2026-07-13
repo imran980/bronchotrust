@@ -1,0 +1,28 @@
+{
+  "ideal (r0,A) 2-param": {
+    "n_params": 2,
+    "sigma_max": 0.2585100397060778,
+    "sigma_min": 0.0059059042832783635,
+    "condition": 43.771457732223695,
+    "smallest_over_largest": 0.022845937782506598
+  },
+  "geom4 + albedo 9DOF (18p)": {
+    "n_params": 18,
+    "sigma_max": 0.20900913979313576,
+    "sigma_min": 0.004106439426917996,
+    "condition": 50.897899144223665,
+    "smallest_over_largest": 0.019647176343495283
+  },
+  "geom4 + albedo 13DOF (22p)": {
+    "n_params": 22,
+    "sigma_max": 0.25844364829662786,
+    "sigma_min": 0.0034137417740001275,
+    "condition": 75.70685347819698,
+    "smallest_over_largest": 0.01320884377116522
+  },
+  "smallest_sv_direction_9DOF": {
+    "geom_load": 0.9878240643732834,
+    "albedo_load": 0.15473343315223226,
+    "interpretation": "closest-to-null direction loads almost entirely on one block => geom/albedo NOT coupled"
+  }
+}
