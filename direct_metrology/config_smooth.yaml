@@ -1,0 +1,47 @@
+# Config for the SMOOTH, anatomically-realistic stenosis-throat study (honest version).
+# Keeps the true viewpoint-dependent occluding contour (aperture_model: smooth). Adds non-circular
+# cross-sections (ecc/lobe), nonuniform vascular albedo, and realistic COLMAP-bootstrap pose noise.
+phantom:
+  aperture_model: smooth
+  R_ref_mm: 6.0
+  r_throat_mm: 3.0
+  length_mm: 40.0
+  stenosis_z_mm: 25.0
+  sigma_mm: 4.0            # axial constriction width -> local flare kappa = (R_ref-r_throat)/sigma^2
+  n_cameras: 16
+  cam_depth_mm: 12.0
+  cam_cone_deg: 8.0
+  albedo: 1.0
+  seed: 0
+  # non-circular cross-section + nonuniform albedo (the "realistic" case turns these on)
+  ecc: 0.0                # ellipticity amplitude (cos2theta)
+  lobe: 0.0               # trilobe amplitude (cos k theta)
+  lobe_k: 3
+  theta0_deg: 20.0
+  albedo_var: 0.0         # vascular-stripe albedo amplitude (Fourier energy at albedo_k)
+  albedo_k: 6
+  intrinsics: {fx: 500.0, fy: 500.0, cx: 320.0, cy: 240.0, width: 640, height: 480}
+
+optimizer:
+  lambda_contour: 1.0
+  lambda_photo: 0.02
+  max_nfev: 4000
+  wall_sample_offset: 1.15
+
+study:
+  depth_sweep_mm: [8.0, 10.0, 12.0, 14.0]     # viewpoint sweep to measure + model the contour bias
+  lambda_photo_sweep: [0.0, 0.02, 0.1, 0.5]   # is the photometric term ever decisive? (0.0 = contour-only)
+  # realistic COLMAP-bootstrap pose noise (real 2_V2 distal: ~0.05% translation, ~0.06 deg rotation)
+  pose_bootstrap_trans_mm: 0.01
+  pose_bootstrap_rot_deg: 0.06
+  # cross-section / albedo cases
+  cases:
+    - {name: circular,               ecc: 0.0,  lobe: 0.0,  albedo_var: 0.0}
+    - {name: ellipse_ecc0.2,         ecc: 0.2,  lobe: 0.0,  albedo_var: 0.0}
+    - {name: trilobe_0.15,           ecc: 0.0,  lobe: 0.15, albedo_var: 0.0}
+    - {name: albedo_var0.3,          ecc: 0.0,  lobe: 0.0,  albedo_var: 0.3}
+    - {name: realistic,              ecc: 0.15, lobe: 0.1,  albedo_var: 0.3}
+
+gate:
+  csa_tol_pct: 10.0          # joint must remain <10% CSA error
+  photometry_min_gain_pct: 0.5   # joint must beat contour-only by at least this (absolute CSA %) to count
