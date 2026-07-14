@@ -1,0 +1,206 @@
+"""Direct geometric metrology from a SHORT AXIAL SEGMENT (not a single ring). Photometric term DROPPED.
+
+The airway throat region is modelled as a short generalized cylinder:
+  - centerline  C(s) = O + s*a + 1/2 s^2 * b        (a: axis unit, b: bend vector)
+  - NON-CIRCULAR cross-section  shape(theta) = 1 + e*cos(2(theta-phi)) + lobe*cos(k(theta-phi))
+  - axial radius profile  r0(s) = r_t + 1/2 * kappa * (s - s_t)^2   (throat radius r_t, throat location
+    s_t, local flare/curvature kappa).
+  Surface: X(s,theta) = C(s) + r0(s)*shape(theta)*(cos theta * e1 + sin theta * e2).
+  Throat CSA = pi * r_t^2 * (1 + 1/2 e^2 + 1/2 lobe^2);  DCE = 2 sqrt(CSA/pi).
+
+Forward model = the TRUE occluding contour (silhouette), enforced IMPLICITLY and consistently with the
+phantom's first-hit/occlusion definition: a viewing ray belongs to the silhouette iff it is TANGENT to
+the near wall (up to the throat plane). For a ray, define
+    f(ray) = max over zeta<=s_t of ( ray_radius(zeta) - r_model(zeta, theta(zeta)) ).
+f<0 => ray stays inside (through the aperture / dark);  f>0 => ray exits the wall before the throat
+(lit);  f=0 => tangent = ON the silhouette. Each detected contour pixel is a silhouette ray, so its
+residual is f(ray) (mm), zero at the true geometry. This is exact by construction (no contour-prediction
+approximation) and is the honest replacement for the single-circle projection-chamfer fit.
+"""
+from __future__ import annotations
+from dataclasses import dataclass
+import numpy as np
+from scipy.optimize import least_squares
+
+N_ZETA = 60                      # axial march samples per ray for the tangency (silhouette) test
+
+
+def _basis(a):
+    a = a / (np.linalg.norm(a) + 1e-12)
+    t = np.array([0, 0, 1.0]) if abs(a[2]) < 0.9 else np.array([1.0, 0, 0])
+    e1 = np.cross(a, t); e1 /= np.linalg.norm(e1) + 1e-12
+    return e1, np.cross(a, e1)
+
+
+def _shape(theta, e, lobe, lobe_k, phi):
+    return 1.0 + e * np.cos(2 * (theta - phi)) + lobe * np.cos(lobe_k * (theta - phi))
+
+
+def _r0(s, r_t, s_t, kappa, kappa4=0.0):
+    u = s - s_t
+    return r_t + 0.5 * kappa * u ** 2 + (1.0 / 24.0) * kappa4 * u ** 4   # quartic ~ matches a Gaussian wall
+
+
+@dataclass
+class SegParams:
+    O: np.ndarray; a: np.ndarray; b: np.ndarray
+    r_t: float; s_t: float; kappa: float; kappa4: float
+    e: float; phi: float; lobe: float
+    lobe_k: int = 3
+    half_len: float = 3.0
+
+
+def throat_csa_dce(p: SegParams):
+    """Throat = the narrowest cross-section = the profile vertex (r0 minimum at s_t). CSA at the vertex,
+    NOT a min over the finite segment (which is degenerate when kappa~0)."""
+    shape_factor = 1 + 0.5 * p.e ** 2 + 0.5 * p.lobe ** 2
+    csa = float(np.pi * p.r_t ** 2 * shape_factor)
+    dce = float(2 * np.sqrt(max(csa, 0) / np.pi))
+    s_th = float(np.clip(p.s_t, -p.half_len, p.half_len))
+    return csa, dce, s_th
+
+
+def csa_dce_profile(p: SegParams, ns=41):
+    s = np.linspace(-p.half_len, p.half_len, ns)
+    r0 = _r0(s, p.r_t, p.s_t, p.kappa, p.kappa4)
+    shape_factor = 1 + 0.5 * p.e ** 2 + 0.5 * p.lobe ** 2
+    csa = np.pi * r0 ** 2 * shape_factor
+    return s, csa, 2 * np.sqrt(np.clip(csa, 0, None) / np.pi)
+
+
+def _unpack(theta, half_len, lobe_k):
+    O = theta[0:3]; a = np.array([theta[3], theta[4], 1.0]); b = np.array([theta[5], theta[6], 0.0])
+    r_t, s_t, kappa, kappa4, e, phi, lobe = theta[7:14]
+    kappa = np.log1p(np.exp(min(kappa, 30.0)))            # softplus -> kappa>=0 (throat is a MINIMUM)
+    return SegParams(O=O, a=a, b=b, r_t=abs(r_t), s_t=s_t, kappa=float(kappa), kappa4=float(kappa4),
+                     e=e, phi=phi, lobe=lobe, lobe_k=lobe_k, half_len=half_len)
+
+
+def _tangency_f(p: SegParams, rays_o, rays_d):
+    """For each ray (origin rays_o[i], unit dir rays_d[i]) compute f = max_{zeta<=s_t}(ray_radius - r_model).
+    Vectorized over rays and an axial grid in the model frame (axis a through O, with bend b)."""
+    a = p.a / (np.linalg.norm(p.a) + 1e-12); e1, e2 = _basis(a)
+    zeta = np.linspace(-p.half_len, p.s_t, N_ZETA)        # near wall up to the throat plane
+    a_dot_oO = (rays_o - p.O[None, :]) @ a                # (N,)
+    a_dot_d = rays_d @ a                                  # (N,)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        t = (zeta[None, :] - a_dot_oO[:, None]) / (a_dot_d[:, None] + 1e-12)   # (N,Z)
+    X = rays_o[:, None, :] + t[:, :, None] * rays_d[:, None, :]                # (N,Z,3)
+    rel = X - p.O[None, None, :]
+    zc = rel @ a                                          # (N,Z) actual axial coord (~zeta)
+    Ccl = p.O[None, None, :] + zc[:, :, None] * a[None, None, :] + 0.5 * (zc ** 2)[:, :, None] * p.b[None, None, :]
+    radv = X - Ccl
+    radv = radv - (np.einsum("nzk,k->nz", radv, a)[:, :, None]) * a[None, None, :]
+    hyp = np.linalg.norm(radv, axis=2)                    # (N,Z) ray radius about the centerline
+    th = np.arctan2(radv @ e2, radv @ e1)
+    rmod = _r0(zc, p.r_t, p.s_t, p.kappa, p.kappa4) * _shape(th, p.e, p.lobe, p.lobe_k, p.phi)
+    valid = t > 0                                         # only forward along the ray
+    g = np.where(valid, hyp - rmod, -1e9)
+    return np.max(g, axis=1)                              # (N,) f=0 on the silhouette
+
+
+def _rays(det, cam, Kinv):
+    uv1 = np.c_[det, np.ones(len(det))]
+    dcam = (Kinv @ uv1.T).T
+    d = (cam.R.T @ dcam.T).T
+    d /= np.linalg.norm(d, axis=1, keepdims=True) + 1e-12
+    o = np.repeat(cam.C[None, :], len(det), axis=0)
+    return o, d
+
+
+def residuals(theta, contours, cams, Kinv, half_len, lobe_k):
+    p = _unpack(theta, half_len, lobe_k)
+    res = []
+    for det, cam in zip(contours, cams):
+        if det is None:
+            continue
+        o, d = _rays(det, cam, Kinv)
+        res.append(_tangency_f(p, o, d))                 # mm; 0 on the silhouette
+    r = np.concatenate(res) if res else np.zeros(1)
+    reg = np.array([1.0 * theta[5], 1.0 * theta[6]])     # keep bend small (weak prior)
+    return np.concatenate([r, reg])
+
+
+_N_REG = 2                                                # number of regularisation residuals appended
+
+
+@dataclass
+class SegFit:
+    p: SegParams
+    csa: float; dce: float; s_throat: float
+    resid_rms_mm: float; success: bool; nfev: int; cost: float
+
+
+def fit(contours, cams, K, theta0, half_len=3.0, lobe_k=3, max_nfev=400):
+    Kinv = np.linalg.inv(K)
+    sol = least_squares(residuals, theta0, args=(contours, cams, Kinv, half_len, lobe_k),
+                        method="trf", max_nfev=max_nfev, x_scale="jac")
+    p = _unpack(sol.x, half_len, lobe_k)
+    csa, dce, s_th = throat_csa_dce(p)
+    r = residuals(sol.x, contours, cams, Kinv, half_len, lobe_k)
+    rms = float(np.sqrt(np.mean(r[:-2] ** 2))) if len(r) > 3 else float("nan")
+    return SegFit(p=p, csa=csa, dce=dce, s_throat=s_th, resid_rms_mm=rms,
+                  success=bool(sol.success), nfev=int(sol.nfev), cost=float(sol.cost))
+
+
+def predicted_contour(p: SegParams, cam, K, ndir=120, rmax_px=260):
+    """Silhouette contour for FIGURES: from the projected throat centre, march each image radial outward
+    and find the tangency (f=0) crossing. Consistent with the implicit residual."""
+    Kinv = np.linalg.inv(K)
+    c0, z0 = _project_pt(p.O + p.s_t * (p.a / np.linalg.norm(p.a)), cam, K)
+    if z0 <= 0:
+        c0 = np.array([K[0, 2], K[1, 2]])
+    ang = np.linspace(-np.pi, np.pi, ndir, endpoint=False)
+    tvals = np.linspace(2.0, rmax_px, 80)
+    out = []
+    for al in ang:
+        px = c0[None, :] + tvals[:, None] * np.array([np.cos(al), np.sin(al)])[None, :]
+        o, d = _rays(px, cam, Kinv)
+        f = _tangency_f(p, o, d)
+        s = np.sign(f)
+        cr = np.where(np.diff(s) != 0)[0]
+        if len(cr):
+            i = cr[0]
+            out.append(px[i])
+    return np.array(out) if len(out) >= 8 else None
+
+
+def _project_pt(X, cam, K):
+    Xc = cam.R @ (X - cam.C); z = max(Xc[2], 1e-6)
+    uv = K @ (Xc / z)
+    return uv[:2], Xc[2]
+
+
+def init_from_contours(contours, cams, K, z_guess, kappa=0.15, kappa4=0.0):
+    """Data-driven init: O from back-projected contour centroids; r_t from median angular radius*depth;
+    ellipticity (e, phi) from the aperture second moments (averaged, de-projected roughly). lobe=0."""
+    Kinv = np.linalg.inv(K); Os = []; rs = []; ecs = []; phis = []
+    for det, cam in zip(contours, cams):
+        if det is None or len(det) < 8:
+            continue
+        c = det.mean(0)
+        ray = Kinv @ np.array([c[0], c[1], 1.0]); ray /= np.linalg.norm(ray)
+        dw = cam.R.T @ ray
+        if abs(dw[2]) < 1e-6:
+            continue
+        t = (z_guess - cam.C[2]) / dw[2]
+        Os.append(cam.C + t * dw)
+        d = det - c; rpx = np.median(np.linalg.norm(d, axis=1))
+        rs.append(rpx / K[0, 0] * t)
+        # 2nd-moment ellipse of the aperture contour -> ellipticity amplitude + orientation
+        cov = np.cov(d.T); w, V = np.linalg.eigh(cov)
+        w = np.clip(w, 1e-9, None); ratio = np.sqrt(w[1] / w[0])          # major/minor
+        ecs.append((ratio - 1) / (ratio + 1))                            # ~ e amplitude
+        vmaj = V[:, 1]; phis.append(np.arctan2(vmaj[1], vmaj[0]))
+    O = np.mean(Os, 0) if Os else np.array([0, 0, z_guess])
+    r_t = float(np.median(rs)) if rs else 3.0
+    e0 = float(np.median(ecs)) if ecs else 0.0
+    phi0 = float(np.median(np.unwrap(2 * np.array(phis)) / 2)) if phis else 0.0
+    return theta_from(O, [0, 0, 1.0], r_t=r_t * 0.95, s_t=0.0, kappa=kappa, kappa4=kappa4,
+                      e=e0, phi=phi0, lobe=0.0)
+
+
+def theta_from(O, a, r_t, s_t=0.0, kappa=0.15, kappa4=0.0, e=0.0, phi=0.0, lobe=0.0, b=(0.0, 0.0)):
+    a = np.asarray(a, float); a = a / a[2] if abs(a[2]) > 1e-6 else a
+    kraw = np.log(np.expm1(max(kappa, 1e-3)))            # invert softplus for the init
+    return np.array([O[0], O[1], O[2], a[0], a[1], b[0], b[1], r_t, s_t, kraw, kappa4, e, phi, lobe])

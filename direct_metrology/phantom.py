@@ -144,10 +144,12 @@ def render(cfg, rng=None):
     dc /= np.linalg.norm(dc, axis=1, keepdims=True)
     lat = p["cam_depth_mm"] * np.tan(np.radians(p["cam_cone_deg"]))
     cams, images = [], []
+    dspread = p.get("cam_depth_spread_mm", 0.0)           # axial parallax: cameras span a range of depths
     for i in range(p["n_cameras"]):
         ph = 2 * np.pi * i / max(1, p["n_cameras"])
+        depth_i = p["cam_depth_mm"] + dspread * (i / max(1, p["n_cameras"] - 1) - 0.5)
         C = np.array([lat * np.sin(ph) * rng.uniform(0.6, 1.0), lat * np.cos(0.7 * ph) * rng.uniform(0.6, 1.0),
-                      z_s - p["cam_depth_mm"] + rng.uniform(-0.3, 0.3)])
+                      z_s - depth_i + rng.uniform(-0.3, 0.3)])
         pitch = 0.03 * np.sin(ph); yaw = 0.03 * np.cos(ph)
         Rx = np.array([[1, 0, 0], [0, np.cos(pitch), -np.sin(pitch)], [0, np.sin(pitch), np.cos(pitch)]])
         Ry = np.array([[np.cos(yaw), 0, np.sin(yaw)], [0, 1, 0], [-np.sin(yaw), 0, np.cos(yaw)]])
