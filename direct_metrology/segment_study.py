@@ -74,13 +74,16 @@ def run_case(case):
     ev_c, _, _ = EA.evaluate_fit(frc, g)
     circle_csa = ev_c.CSA_error["CSA_error_pct"]["rmse"]
 
-    # forward-model mismatch at GT parameters (0 => exact; large => optimum can be displaced)
+    # --- GT global-minimum verification (phi = th0 directly now that the basis matches the generator) ---
     tgt = SG.theta_from(g["throat_center_mm"], [0, 0, 1.0], r_t=g["throat_radius_mm"], s_t=0.0,
                         kappa=(g["R_ref_mm"] - g["throat_radius_mm"]) / cfg["phantom"]["sigma_mm"] ** 2,
                         kappa4=K4_GAUSS, e=case["ecc"], phi=np.radians(cfg["phantom"]["theta0_deg"]),
                         lobe=case["lobe"])
     rr = SG.residuals(tgt, cons, P.cameras, Kinv, 3.0, 3)
     gt_resid_mm = float(np.sqrt(np.mean(rr[:-2] ** 2)))
+    fs_gt = SG.fit(cons, P.cameras, P.K, tgt, half_len=3.0, max_nfev=600)    # start AT GT; does it stay?
+    gt_start_csa_err = 100 * abs(fs_gt.csa - g["csa_mm2"]) / g["csa_mm2"]
+    gt_start_resid = fs_gt.resid_rms_mm
 
     # segment: data-driven init + random inits
     th0 = SG.init_from_contours(cons, P.cameras, P.K, g["stenosis_z_mm"], kappa=0.15, kappa4=K4_GAUSS)
@@ -93,7 +96,7 @@ def run_case(case):
         j[12] += rng.normal(0, 0.6)                      # phi
         j[13] += rng.normal(0, 0.1)                      # lobe
         inits.append((f"rand{k}", j))
-    fits = []
+    fits = []; segfits = []
     for tag, ti in inits:
         fs = SG.fit(cons, P.cameras, P.K, ti, half_len=3.0, max_nfev=600)
         ev, _, _ = EA.evaluate_fit(_FitShim(fs), g)
@@ -101,13 +104,24 @@ def run_case(case):
         fits.append(dict(init=tag, csa_err_pct=float(csa_e), dce_err_pct=float(dce_e),
                          r_t=float(fs.p.r_t), e=float(fs.p.e), lobe=float(fs.p.lobe),
                          kappa=float(fs.p.kappa), resid_rms_mm=float(fs.resid_rms_mm)))
-    csa_errs = np.array([f["csa_err_pct"] for f in fits])
-    best = float(csa_errs.min()); med = float(np.median(csa_errs))
-    conv = float(np.mean(csa_errs < 10.0))
-    return dict(case=case["name"], gt_csa_mm2=g["csa_mm2"], n_detected=ndet,
-                circle_csa_err_pct=float(circle_csa), gt_forward_resid_mm=gt_resid_mm,
-                seg_csa_err_best_pct=best, seg_csa_err_median_pct=med, seg_frac_below_10pct=conv,
-                data_init_csa_err_pct=fits[0]["csa_err_pct"], fits=fits)
+        segfits.append(fs)
+    csa_errs = np.array([f["csa_err_pct"] for f in fits]); dce_errs = np.array([f["dce_err_pct"] for f in fits])
+    ibest = int(np.argmin(csa_errs)); bestfs = segfits[ibest]
+    resid_min = min(f["resid_rms_mm"] for f in fits)
+    gt_is_global_min = bool(gt_resid_mm <= resid_min + 0.02)     # GT residual not worse than any fit (mm tol)
+    # covariance / Jacobian from the best fit
+    cov = dict(jac_rank=bestfs.jac_rank, jac_cond=bestfs.jac_cond,
+               singular_values=list(bestfs.singular_values[:3]) + list(bestfs.singular_values[-3:]),
+               csa_sigma_mm2=float(np.sqrt(bestfs.csa_var)) if np.isfinite(bestfs.csa_var) else None,
+               dce_sigma_mm=float(np.sqrt(bestfs.dce_var)) if np.isfinite(bestfs.dce_var) else None)
+    return dict(case=case["name"], gt_csa_mm2=g["csa_mm2"], gt_dce_mm=g["dce_mm"], n_detected=ndet,
+                circle_csa_err_pct=float(circle_csa),
+                gt_forward_resid_mm=gt_resid_mm, gt_start_csa_err_pct=float(gt_start_csa_err),
+                gt_start_resid_mm=float(gt_start_resid), gt_is_global_min=gt_is_global_min,
+                seg_csa_err_best_pct=float(csa_errs.min()), seg_csa_err_median_pct=float(np.median(csa_errs)),
+                seg_dce_err_best_pct=float(dce_errs.min()), seg_dce_err_median_pct=float(np.median(dce_errs)),
+                seg_frac_below_10pct=float(np.mean(csa_errs < 10.0)),
+                data_init_csa_err_pct=fits[0]["csa_err_pct"], covariance=cov, fits=fits)
 
 
 def _figure(rows):
@@ -120,17 +134,36 @@ def _figure(rows):
     a.bar(x + 0.25, [r["seg_csa_err_median_pct"] for r in rows], 0.25, label="segment (median init)", color="indianred")
     a.axhline(10, color="k", ls=":", label="pass gate 10% CSA")
     a.set_xticks(x); a.set_xticklabels(labels, fontsize=8, rotation=8); a.set_ylabel("CSA error %")
-    a.set_title("Short-segment vs single-circle: fixes isolated shapes, FAILS the combined realistic throat")
+    a.set_title("Short-segment vs single-circle (basis-convention bug FIXED)")
     a.legend(fontsize=8); a.set_ylim(0, max(60, max(r['circle_csa_err_pct'] for r in rows) * 1.1))
     fig.tight_layout(); fig.savefig(OUT / "fig_segment_vs_circle.png", dpi=120); plt.close(fig)
     return ["fig_segment_vs_circle.png"]
+
+
+def _before_after(rows):
+    """Compare the corrected (after) run to the buggy (before) snapshot, if present."""
+    bpath = OUT / "results_segment_BEFORE.json"
+    if not bpath.exists():
+        return None
+    before = {r["case"]: r for r in json.loads(bpath.read_text())["cases"]}
+    tbl = []
+    for r in rows:
+        b = before.get(r["case"])
+        tbl.append(dict(case=r["case"],
+                        before_seg_median_pct=(b["seg_csa_err_median_pct"] if b else None),
+                        after_seg_median_pct=r["seg_csa_err_median_pct"],
+                        before_frac_below10=(b["seg_frac_below_10pct"] if b else None),
+                        after_frac_below10=r["seg_frac_below_10pct"],
+                        before_gt_resid_mm=(b.get("gt_forward_resid_mm") if b else None),
+                        after_gt_resid_mm=r["gt_forward_resid_mm"]))
+    return tbl
 
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
     rows = [run_case(c) for c in CASES]
-    # GATE: for EVERY case, segment must beat single-circle AND stay < 10% CSA (use median init = robust)
+    # GATE: for EVERY case, segment must beat single-circle AND stay < 10% CSA (median over inits = robust)
     per = []
     for r in rows:
         beats = r["seg_csa_err_median_pct"] < r["circle_csa_err_pct"]
@@ -138,15 +171,19 @@ def main():
         per.append(dict(case=r["case"], beats_circle=bool(beats), below_10pct=bool(below),
                         seg_median=r["seg_csa_err_median_pct"], circle=r["circle_csa_err_pct"]))
     overall = bool(all(p["beats_circle"] and p["below_10pct"] for p in per))
+    all_gt_global_min = bool(all(r["gt_is_global_min"] for r in rows))
     figs = _figure(rows)
     summary = dict(verdict=("PASS" if overall else "FAIL"),
-                   proceed_to_real_video=bool(overall),
-                   decision=("test real video" if overall else "ABANDON the direct-metrology direction"),
+                   clears_10pct_csa_gate=bool(overall),
                    gate="segment beats single-circle AND <10% CSA (median over inits) in EVERY case",
-                   per_case_gate=per, cases=rows, runtime_s=time.time() - t0, figures=figs,
+                   gt_is_global_minimum_all_cases=all_gt_global_min,
+                   basis_convention="FIXED (optimizer azimuth == generator world azimuth; phi==th0)",
+                   per_case_gate=per, before_after=_before_after(rows), cases=rows,
+                   runtime_s=time.time() - t0, figures=figs,
                    note=("Photometric term dropped. Short generalized-cylinder segment (centerline, "
                          "non-circular cross-section, local flare, CSA/DCE profile) vs single-circle. "
-                         "Smooth elliptical/lobed phantom. Synthetic only; no novelty/clinical claim."))
+                         "-90deg basis-convention bug FIXED; regenerated from scratch. Smooth "
+                         "elliptical/lobed phantom. Synthetic only; no novelty/clinical claim."))
     (OUT / "results_segment.json").write_text(json.dumps(summary, indent=2,
                                               default=lambda o: float(o) if isinstance(o, np.floating) else o))
     _print(summary)
@@ -154,18 +191,39 @@ def main():
 
 
 def _print(s):
-    print("=" * 92)
-    print("SHORT-AXIAL-SEGMENT DIRECT METROLOGY  (photometry dropped; honest gate)")
-    print("=" * 92)
-    print("  case             det  circle_CSA%   seg_best%  seg_median%  frac<10%  GT_fwd_resid(mm)  beats&<10%")
+    print("=" * 100)
+    print("SHORT-AXIAL-SEGMENT DIRECT METROLOGY  (basis-convention bug FIXED; regenerated from scratch)")
+    print("=" * 100)
+    print("  case            det  circle%   seg_best%  seg_med%  DCE_med%  frac<10  GTresid  GTstart%  GTglobalMin")
     for r, p in zip(s["cases"], s["per_case_gate"]):
-        ok = "PASS" if (p["beats_circle"] and p["below_10pct"]) else "FAIL"
-        print("  %-14s  %2d   %+8.2f    %+7.2f    %+8.2f     %.2f      %.3f            %s" % (
+        print("  %-13s  %2d  %+7.2f   %+7.2f  %+7.2f  %+7.2f    %.2f   %6.3f   %+6.2f    %s" % (
             r["case"], r["n_detected"], r["circle_csa_err_pct"], r["seg_csa_err_best_pct"],
-            r["seg_csa_err_median_pct"], r["seg_frac_below_10pct"], r["gt_forward_resid_mm"], ok))
-    print("-" * 92)
-    print(f"  VERDICT: {s['verdict']}   ->   {s['decision']}")
-    print("=" * 92)
+            r["seg_csa_err_median_pct"], r["seg_dce_err_median_pct"], r["seg_frac_below_10pct"],
+            r["gt_forward_resid_mm"], r["gt_start_csa_err_pct"], r["gt_is_global_min"]))
+    print("-" * 100)
+    print("  covariance / Jacobian (best fit):")
+    for r in s["cases"]:
+        c = r["covariance"]
+        print("    %-13s rank=%s cond=%.1f  CSA_sigma=%s mm^2  DCE_sigma=%s mm" % (
+            r["case"], c["jac_rank"], c["jac_cond"],
+            (f"{c['csa_sigma_mm2']:.3f}" if c["csa_sigma_mm2"] is not None else "n/a"),
+            (f"{c['dce_sigma_mm']:.4f}" if c["dce_sigma_mm"] is not None else "n/a")))
+    if s["before_after"]:
+        print("-" * 100)
+        print("  BEFORE (buggy) -> AFTER (fixed):  seg CSA median %% | frac<10 | GT-fwd resid mm")
+        for b in s["before_after"]:
+            print("    %-13s  median %s%% -> %+6.2f%%   frac %s -> %.2f   GTresid %s -> %.3f" % (
+                b["case"], (f"{b['before_seg_median_pct']:+.2f}" if b["before_seg_median_pct"] is not None else "  n/a"),
+                b["after_seg_median_pct"],
+                (f"{b['before_frac_below10']:.2f}" if b["before_frac_below10"] is not None else "n/a"),
+                b["after_frac_below10"],
+                (f"{b['before_gt_resid_mm']:.3f}" if b["before_gt_resid_mm"] is not None else "n/a"),
+                b["after_gt_resid_mm"]))
+    print("-" * 100)
+    print(f"  GT is the global minimum in ALL cases: {s['gt_is_global_minimum_all_cases']}")
+    print(f"  Clears the <10% CSA gate (beats circle AND median<10% in every case): {s['clears_10pct_csa_gate']}")
+    print(f"  VERDICT: {s['verdict']}")
+    print("=" * 100)
 
 
 if __name__ == "__main__":

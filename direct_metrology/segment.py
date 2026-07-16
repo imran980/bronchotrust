@@ -26,9 +26,13 @@ N_ZETA = 60                      # axial march samples per ray for the tangency 
 
 
 def _basis(a):
+    """In-plane cross-section basis with e1 aligned to the world-x projection, so the azimuth
+    th = atan2(radv·e2, radv·e1) MATCHES the generator's world azimuth atan2(X1, X0) (for axis a=+z,
+    e1=[1,0,0], e2=[0,1,0]). This is the SAME convention as phantom._shape, so the optimizer's `phi`
+    corresponds directly to the generator's th0 (fixes the prior -90° basis-convention bug)."""
     a = a / (np.linalg.norm(a) + 1e-12)
-    t = np.array([0, 0, 1.0]) if abs(a[2]) < 0.9 else np.array([1.0, 0, 0])
-    e1 = np.cross(a, t); e1 /= np.linalg.norm(e1) + 1e-12
+    ref = np.array([1.0, 0, 0]) if abs(a[0]) < 0.9 else np.array([0, 1.0, 0])
+    e1 = ref - (ref @ a) * a; e1 /= np.linalg.norm(e1) + 1e-12
     return e1, np.cross(a, e1)
 
 
@@ -129,6 +133,36 @@ class SegFit:
     p: SegParams
     csa: float; dce: float; s_throat: float
     resid_rms_mm: float; success: bool; nfev: int; cost: float
+    jac_rank: int = -1; jac_cond: float = float("nan")
+    singular_values: tuple = ()
+    csa_var: float = float("nan"); dce_var: float = float("nan")
+
+
+def _cov_from_jac(sol, p):
+    """Gauss-Newton covariance from the solution Jacobian (verification only; does NOT change the loss).
+    Propagate to Var(CSA), Var(DCE) via the delta method. CSA = pi r_t^2 (1 + e^2/2 + lobe^2/2)."""
+    J = sol.jac; m, n = J.shape
+    sv = np.linalg.svd(J, compute_uv=False)
+    tol = 1e-6 * sv[0]
+    rank = int(np.sum(sv > tol))
+    cond = float(sv[0] / sv[rank - 1]) if rank > 0 else float("inf")   # over the identifiable subspace
+    dof = max(1, m - n); sigma2 = 2.0 * sol.cost / dof
+    r_t, e, lobe = abs(sol.x[7]), sol.x[11], sol.x[13]
+    sf = 1 + 0.5 * e ** 2 + 0.5 * lobe ** 2
+    grad = np.zeros(n)
+    grad[7] = 2 * np.pi * r_t * sf * np.sign(sol.x[7] if sol.x[7] != 0 else 1.0)
+    grad[11] = np.pi * r_t ** 2 * e
+    grad[13] = np.pi * r_t ** 2 * lobe
+    # pseudo-inverse over the identifiable subspace: the segment has ~2 unconstrained gauge directions
+    # (bend b for a straight throat) so J^T J is rank-deficient; pinv gives finite variance for the
+    # well-constrained CSA directions (r_t, e, lobe). Verification only; does not change the loss.
+    cov = sigma2 * np.linalg.pinv(J.T @ J, rcond=1e-8)
+    csa_var = float(grad @ cov @ grad)
+    if not np.isfinite(csa_var) or csa_var < 0:
+        csa_var = float("nan")
+    csa = np.pi * r_t ** 2 * sf
+    dce_var = float(csa_var / (np.pi * csa)) if (np.isfinite(csa_var) and csa > 1e-9) else float("nan")
+    return rank, cond, tuple(float(s) for s in sv), csa_var, dce_var
 
 
 def fit(contours, cams, K, theta0, half_len=3.0, lobe_k=3, max_nfev=400):
@@ -139,8 +173,10 @@ def fit(contours, cams, K, theta0, half_len=3.0, lobe_k=3, max_nfev=400):
     csa, dce, s_th = throat_csa_dce(p)
     r = residuals(sol.x, contours, cams, Kinv, half_len, lobe_k)
     rms = float(np.sqrt(np.mean(r[:-2] ** 2))) if len(r) > 3 else float("nan")
+    rank, cond, sv, csa_var, dce_var = _cov_from_jac(sol, p)
     return SegFit(p=p, csa=csa, dce=dce, s_throat=s_th, resid_rms_mm=rms,
-                  success=bool(sol.success), nfev=int(sol.nfev), cost=float(sol.cost))
+                  success=bool(sol.success), nfev=int(sol.nfev), cost=float(sol.cost),
+                  jac_rank=rank, jac_cond=cond, singular_values=sv, csa_var=csa_var, dce_var=dce_var)
 
 
 def predicted_contour(p: SegParams, cam, K, ndir=120, rmax_px=260):
