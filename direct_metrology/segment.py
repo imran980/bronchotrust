@@ -179,6 +179,65 @@ def fit(contours, cams, K, theta0, half_len=3.0, lobe_k=3, max_nfev=400):
                   jac_rank=rank, jac_cond=cond, singular_values=sv, csa_var=csa_var, dce_var=dce_var)
 
 
+# =========================================================================================
+# OPTIMIZATION-ROBUSTNESS ONLY (staged fitting / scaling / multistart). The MODEL and LOSS
+# (residuals, _r0, _shape, _tangency_f) are byte-for-byte unchanged; these only decide the
+# initialization path and solver settings, and select among solutions by FINAL RESIDUAL.
+# =========================================================================================
+
+# characteristic per-parameter scales for the trust-region (better conditioning than 'jac' here):
+# O(mm), a(2), b(2), r_t, s_t, kappa_raw, kappa4, e, phi, lobe
+_XSCALE = np.array([1.0, 1.0, 1.0, 0.05, 0.05, 0.05, 0.05, 1.0, 1.0, 1.0, 0.05, 0.2, 1.0, 0.2])
+
+# continuation stages: fit a circular SoR first, then release ellipticity, then the lobe.
+_STAGE_FREE = [
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],            # circle / surface-of-revolution (e=lobe=0 fixed)
+    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],    # + ellipse (e, phi)
+    list(range(14)),                               # + lobe (full parameter set)
+]
+
+
+def _masked_residuals(free_vals, base, free_idx, contours, cams, Kinv, half_len, lobe_k):
+    th = base.copy(); th[free_idx] = free_vals
+    return residuals(th, contours, cams, Kinv, half_len, lobe_k)
+
+
+def fit_staged(contours, cams, K, theta0, half_len=3.0, lobe_k=3, max_nfev=200, use_xscale=True):
+    """Same loss/model as fit(); solved by continuation (circle -> ellipse -> lobe) with explicit
+    parameter scaling. The final stage optimizes ALL 14 parameters with the identical residual, so the
+    objective is unchanged — only the initialization path and x_scale differ."""
+    Kinv = np.linalg.inv(K)
+    th = np.array(theta0, float).copy(); th[11] = 0.0; th[13] = 0.0     # start from a circular section
+    xs = _XSCALE if use_xscale else None
+    sol = None
+    for si, free in enumerate(_STAGE_FREE):
+        base = th.copy()
+        if si == 0: base[11] = 0.0; base[13] = 0.0                     # e=lobe=0 during the circle stage
+        if si == 1: base[13] = 0.0                                     # lobe=0 during the ellipse stage
+        free = np.asarray(free)
+        xsub = xs[free] if xs is not None else "jac"
+        sol = least_squares(_masked_residuals, base[free],
+                            args=(base, free, contours, cams, Kinv, half_len, lobe_k),
+                            method="trf", max_nfev=max_nfev, x_scale=xsub)
+        th = base.copy(); th[free] = sol.x
+    p = _unpack(th, half_len, lobe_k)
+    csa, dce, s_th = throat_csa_dce(p)
+    r = residuals(th, contours, cams, Kinv, half_len, lobe_k)
+    rms = float(np.sqrt(np.mean(r[:-2] ** 2))) if len(r) > 3 else float("nan")
+    rank, cond, sv, csa_var, dce_var = _cov_from_jac(sol, p)           # stage-3 sol.x/jac is the full set
+    return SegFit(p=p, csa=csa, dce=dce, s_throat=s_th, resid_rms_mm=rms,
+                  success=bool(sol.success), nfev=int(sol.nfev), cost=float(sol.cost),
+                  jac_rank=rank, jac_cond=cond, singular_values=sv, csa_var=csa_var, dce_var=dce_var)
+
+
+def fit_multistart(contours, cams, K, inits, half_len=3.0, lobe_k=3, max_nfev=200):
+    """Run the staged fit from several inits and RETURN THE LOWEST-FINAL-RESIDUAL solution (rejecting
+    higher-residual local minima). Selection uses only the observed residual — no ground truth."""
+    fits = [fit_staged(contours, cams, K, ti, half_len, lobe_k, max_nfev) for ti in inits]
+    best = min(fits, key=lambda f: f.resid_rms_mm)
+    return best, fits
+
+
 def predicted_contour(p: SegParams, cam, K, ndir=120, rmax_px=260):
     """Silhouette contour for FIGURES: from the projected throat centre, march each image radial outward
     and find the tangency (f=0) crossing. Consistent with the implicit residual."""
