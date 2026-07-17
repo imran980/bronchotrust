@@ -80,9 +80,12 @@ def _unpack(theta, half_len, lobe_k):
                      e=e, phi=phi, lobe=lobe, lobe_k=lobe_k, half_len=half_len)
 
 
-def _tangency_f(p: SegParams, rays_o, rays_d):
-    """For each ray (origin rays_o[i], unit dir rays_d[i]) compute f = max_{zeta<=s_t}(ray_radius - r_model).
-    Vectorized over rays and an axial grid in the model frame (axis a through O, with bend b)."""
+def _tangency_core(p: SegParams, rays_o, rays_d):
+    """For each ray compute the tangency margin fmax = max over the FORWARD (t>0) axial support of
+    (ray_radius - r_model), and a per-ray validity flag. A ray is VALID iff the candidate segment has a
+    forward intersection/tangency in front of the camera within the axial support; otherwise the segment
+    is entirely behind the camera / outside support -> has_valid=False (fmax=-inf). NO sentinel value is
+    baked into the residual here (that is applied by the caller)."""
     a = p.a / (np.linalg.norm(p.a) + 1e-12); e1, e2 = _basis(a)
     zeta = np.linspace(-p.half_len, p.s_t, N_ZETA)        # near wall up to the throat plane
     a_dot_oO = (rays_o - p.O[None, :]) @ a                # (N,)
@@ -98,9 +101,20 @@ def _tangency_f(p: SegParams, rays_o, rays_d):
     hyp = np.linalg.norm(radv, axis=2)                    # (N,Z) ray radius about the centerline
     th = np.arctan2(radv @ e2, radv @ e1)
     rmod = _r0(zc, p.r_t, p.s_t, p.kappa, p.kappa4) * _shape(th, p.e, p.lobe, p.lobe_k, p.phi)
-    valid = t > 0                                         # only forward along the ray
-    g = np.where(valid, hyp - rmod, -1e9)
-    return np.max(g, axis=1)                              # (N,) f=0 on the silhouette
+    valid_s = t > 0                                       # forward samples only
+    gv = np.where(valid_s, hyp - rmod, -np.inf)
+    fmax = gv.max(axis=1)                                 # (N,) tangency margin; -inf if no forward sample
+    has_valid = np.isfinite(fmax)
+    return fmax, has_valid
+
+
+def _tangency_f(p: SegParams, rays_o, rays_d, pen):
+    """Optimized per-ray residual: the tangency margin for VALID rays; a moderate constant PENALTY `pen`
+    (NOT zero, NOT the old -1e9 sentinel) for rays whose segment is behind the camera / outside support,
+    so invalid rays are penalized (the optimizer cannot evade disagreement by hiding the ring behind
+    cameras) without a huge constant swamping the loss."""
+    fmax, hv = _tangency_core(p, rays_o, rays_d)
+    return np.where(hv, fmax, pen)
 
 
 def _rays(det, cam, Kinv):
@@ -112,17 +126,38 @@ def _rays(det, cam, Kinv):
     return o, d
 
 
-def residuals(theta, contours, cams, Kinv, half_len, lobe_k):
+def residuals(theta, contours, cams, Kinv, half_len, lobe_k, pen=0.5):
     p = _unpack(theta, half_len, lobe_k)
     res = []
     for det, cam in zip(contours, cams):
         if det is None:
             continue
         o, d = _rays(det, cam, Kinv)
-        res.append(_tangency_f(p, o, d))                 # mm; 0 on the silhouette
+        res.append(_tangency_f(p, o, d, pen))            # tangency for valid rays; `pen` for invalid
     r = np.concatenate(res) if res else np.zeros(1)
     reg = np.array([1.0 * theta[5], 1.0 * theta[6]])     # keep bend small (weak prior)
     return np.concatenate([r, reg])
+
+
+def frame_diagnostics(theta, contours, cams, K, half_len=3.0, lobe_k=3, ray_frac_valid=0.5):
+    """Per-frame validity + tangency quality (REPORTING only; not part of the optimized loss).
+    Returns (per_frame list, n_valid_frames, valid_ray_tangency_rms). A frame is 'valid' if at least
+    ray_frac_valid of its rays have a forward tangency (segment visible in front of that camera)."""
+    Kinv = np.linalg.inv(K); p = _unpack(theta, half_len, lobe_k)
+    per = []; all_valid_f = []
+    for det, cam in zip(contours, cams):
+        if det is None:
+            per.append(dict(valid_frac=0.0, tang_rms=float("nan"), n_rays=0, frame_valid=False)); continue
+        o, d = _rays(det, cam, Kinv)
+        fmax, hv = _tangency_core(p, o, d)
+        vf = float(hv.mean())
+        trms = float(np.sqrt(np.mean(fmax[hv] ** 2))) if hv.any() else float("nan")
+        if hv.any():
+            all_valid_f.append(fmax[hv])
+        per.append(dict(valid_frac=vf, tang_rms=trms, n_rays=int(len(det)), frame_valid=bool(vf >= ray_frac_valid)))
+    nvf = int(sum(x["frame_valid"] for x in per))
+    vrms = float(np.sqrt(np.mean(np.concatenate(all_valid_f) ** 2))) if all_valid_f else float("nan")
+    return per, nvf, vrms
 
 
 _N_REG = 2                                                # number of regularisation residuals appended
@@ -165,13 +200,13 @@ def _cov_from_jac(sol, p):
     return rank, cond, tuple(float(s) for s in sv), csa_var, dce_var
 
 
-def fit(contours, cams, K, theta0, half_len=3.0, lobe_k=3, max_nfev=400):
+def fit(contours, cams, K, theta0, half_len=3.0, lobe_k=3, max_nfev=400, pen=0.5):
     Kinv = np.linalg.inv(K)
-    sol = least_squares(residuals, theta0, args=(contours, cams, Kinv, half_len, lobe_k),
+    sol = least_squares(residuals, theta0, args=(contours, cams, Kinv, half_len, lobe_k, pen),
                         method="trf", max_nfev=max_nfev, x_scale="jac")
     p = _unpack(sol.x, half_len, lobe_k)
     csa, dce, s_th = throat_csa_dce(p)
-    r = residuals(sol.x, contours, cams, Kinv, half_len, lobe_k)
+    r = residuals(sol.x, contours, cams, Kinv, half_len, lobe_k, pen)
     rms = float(np.sqrt(np.mean(r[:-2] ** 2))) if len(r) > 3 else float("nan")
     rank, cond, sv, csa_var, dce_var = _cov_from_jac(sol, p)
     return SegFit(p=p, csa=csa, dce=dce, s_throat=s_th, resid_rms_mm=rms,
@@ -180,9 +215,11 @@ def fit(contours, cams, K, theta0, half_len=3.0, lobe_k=3, max_nfev=400):
 
 
 # =========================================================================================
-# OPTIMIZATION-ROBUSTNESS ONLY (staged fitting / scaling / multistart). The MODEL and LOSS
-# (residuals, _r0, _shape, _tangency_f) are byte-for-byte unchanged; these only decide the
+# OPTIMIZATION-ROBUSTNESS ONLY (staged fitting / scaling / multistart). The MODEL and the
+# valid-ray tangency loss (_r0, _shape, _tangency_core) are unchanged; these only decide the
 # initialization path and solver settings, and select among solutions by FINAL RESIDUAL.
+# (Invalid-ray handling in _tangency_f was changed from a -1e9 sentinel to a moderate penalty;
+#  this is identity on the phantom, where every ray has a forward tangency.)
 # =========================================================================================
 
 # characteristic per-parameter scales for the trust-region (better conditioning than 'jac' here):
@@ -197,12 +234,12 @@ _STAGE_FREE = [
 ]
 
 
-def _masked_residuals(free_vals, base, free_idx, contours, cams, Kinv, half_len, lobe_k):
+def _masked_residuals(free_vals, base, free_idx, contours, cams, Kinv, half_len, lobe_k, pen):
     th = base.copy(); th[free_idx] = free_vals
-    return residuals(th, contours, cams, Kinv, half_len, lobe_k)
+    return residuals(th, contours, cams, Kinv, half_len, lobe_k, pen)
 
 
-def fit_staged(contours, cams, K, theta0, half_len=3.0, lobe_k=3, max_nfev=200, use_xscale=True):
+def fit_staged(contours, cams, K, theta0, half_len=3.0, lobe_k=3, max_nfev=200, use_xscale=True, pen=0.5):
     """Same loss/model as fit(); solved by continuation (circle -> ellipse -> lobe) with explicit
     parameter scaling. The final stage optimizes ALL 14 parameters with the identical residual, so the
     objective is unchanged — only the initialization path and x_scale differ."""
@@ -217,12 +254,12 @@ def fit_staged(contours, cams, K, theta0, half_len=3.0, lobe_k=3, max_nfev=200, 
         free = np.asarray(free)
         xsub = xs[free] if xs is not None else "jac"
         sol = least_squares(_masked_residuals, base[free],
-                            args=(base, free, contours, cams, Kinv, half_len, lobe_k),
+                            args=(base, free, contours, cams, Kinv, half_len, lobe_k, pen),
                             method="trf", max_nfev=max_nfev, x_scale=xsub)
         th = base.copy(); th[free] = sol.x
     p = _unpack(th, half_len, lobe_k)
     csa, dce, s_th = throat_csa_dce(p)
-    r = residuals(th, contours, cams, Kinv, half_len, lobe_k)
+    r = residuals(th, contours, cams, Kinv, half_len, lobe_k, pen)
     rms = float(np.sqrt(np.mean(r[:-2] ** 2))) if len(r) > 3 else float("nan")
     rank, cond, sv, csa_var, dce_var = _cov_from_jac(sol, p)           # stage-3 sol.x/jac is the full set
     return SegFit(p=p, csa=csa, dce=dce, s_throat=s_th, resid_rms_mm=rms,
@@ -230,17 +267,19 @@ def fit_staged(contours, cams, K, theta0, half_len=3.0, lobe_k=3, max_nfev=200, 
                   jac_rank=rank, jac_cond=cond, singular_values=sv, csa_var=csa_var, dce_var=dce_var)
 
 
-def fit_multistart(contours, cams, K, inits, half_len=3.0, lobe_k=3, max_nfev=200):
+def fit_multistart(contours, cams, K, inits, half_len=3.0, lobe_k=3, max_nfev=200, pen=0.5):
     """Run the staged fit from several inits and RETURN THE LOWEST-FINAL-RESIDUAL solution (rejecting
-    higher-residual local minima). Selection uses only the observed residual — no ground truth."""
-    fits = [fit_staged(contours, cams, K, ti, half_len, lobe_k, max_nfev) for ti in inits]
+    higher-residual local minima). Selection uses only the observed residual — no ground truth. Invalid
+    rays cost `pen`, so a candidate that explains only a few frames has a high residual and loses."""
+    fits = [fit_staged(contours, cams, K, ti, half_len, lobe_k, max_nfev, pen=pen) for ti in inits]
     best = min(fits, key=lambda f: f.resid_rms_mm)
     return best, fits
 
 
 def predicted_contour(p: SegParams, cam, K, ndir=120, rmax_px=260):
     """Silhouette contour for FIGURES: from the projected throat centre, march each image radial outward
-    and find the tangency (f=0) crossing. Consistent with the implicit residual."""
+    and find the tangency (f=0) crossing. Uses the tangency margin (VALID rays only); rays whose segment
+    is behind the camera / outside support are treated as interior so the crossing marks the silhouette."""
     Kinv = np.linalg.inv(K)
     c0, z0 = _project_pt(p.O + p.s_t * (p.a / np.linalg.norm(p.a)), cam, K)
     if z0 <= 0:
@@ -251,12 +290,12 @@ def predicted_contour(p: SegParams, cam, K, ndir=120, rmax_px=260):
     for al in ang:
         px = c0[None, :] + tvals[:, None] * np.array([np.cos(al), np.sin(al)])[None, :]
         o, d = _rays(px, cam, Kinv)
-        f = _tangency_f(p, o, d)
+        fmax, hv = _tangency_core(p, o, d)
+        f = np.where(hv, fmax, -1e3)                     # invalid ray -> interior (very negative)
         s = np.sign(f)
         cr = np.where(np.diff(s) != 0)[0]
         if len(cr):
-            i = cr[0]
-            out.append(px[i])
+            out.append(px[cr[0]])
     return np.array(out) if len(out) >= 8 else None
 
 
