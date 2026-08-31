@@ -4,9 +4,9 @@ Monocular pediatric-airway (bronchoscopy/laryngoscopy) 3D reconstruction and
 **scale-free % obstruction** measurement from clinical video, using COLMAP
 Structure-from-Motion + Multi-View Stereo with **smart local-batch frame selection**.
 
-This tag (`barbour-style-colmap-baseline`) is the frozen, working COLMAP baseline. It is a
-research feasibility pipeline, **not** a validated clinical tool — see
-[Known limitations](#known-limitations).
+One pipeline, applied unchanged across a clinical human cohort and a controlled porcine study,
+with its geometry validated on the C3VD ground-truth dataset. It is a research feasibility
+pipeline, **not** a validated clinical tool — see [Known limitations](#known-limitations).
 
 > The next method (texture-free silhouette/shading lumen fitting, using COLMAP poses only as
 > initialization) is scoped separately in [`NEW_METHOD_SCOPE.md`](NEW_METHOD_SCOPE.md).
@@ -22,13 +22,23 @@ video ─► smart frame selection ─► COLMAP SfM (pinned intrinsics, exhaust
       ─► (one connected model) scale-free % obstruction
 ```
 
-Two things learned the hard way, baked into the design:
+Three things learned the hard way, baked into the design:
 
-- **Frame SELECTION is the decisive lever.** Naive contiguous 30-frame windows fail the
+- **CAPTURE BEHAVIOR decides success — not parallax magnitude.** A clean tube needs the scope to
+  advance **steadily and monotonically through** the lumen, kept **centered** (the ring in view),
+  without **dwelling**, **reversing**, or going **dark/blurred**. Per-frame triangulation angle is
+  uniformly ~3° in *both* successes and failures — it does **not** discriminate; sufficient forward
+  **traversal** (≥ ~1.7 median-depths in one run) does. Where the scope dwells or drifts off-center
+  you get a cone / one-sided cup, not a tube. A wall the scope never images can't be reconstructed
+  (coverage), but that is a *capture* fact, not a parallax or matcher limit — swapping matchers
+  (GlueMap, MASt3R) or masking features does **not** help.
+- **Frame SELECTION is the decisive lever you can control.** Naive contiguous windows fail the
   low-texture subglottis; *smart* selection — CLAHE + sharpness/glare/contrast gating +
   viewpoint-coverage-diversity sampling + adaptive pool (±30 → ±20 → ±45) — closes clean
-  subglottic ring **shapes** where naive windows cannot (8/12 landmarks accepted;
-  proximal subglottis 3/3 reproducible across videos).
+  subglottic ring **shapes** where naive windows cannot (8/12 landmarks accepted; proximal
+  subglottis 3/3 reproducible across videos). For 60 fps footage two knobs matter: **fps
+  normalization** (`--target_fps 30` → stride 2) and a **SIFT feature cap** (rich cartilage
+  texture otherwise overloads bundle adjustment).
 - **COLMAP nails poses; the dense wall is the weak link.** Feature-SfM/MVS needs texture, and
   the airway wall is textureless/specular. Rings are measured on the **dense MVS cloud**
   (not the Poisson mesh), sliced **at centerline points** (a forward scope images the wall
@@ -37,8 +47,10 @@ Two things learned the hard way, baked into the design:
 ### Locked design decisions
 Intrinsics are **pinned, never refined** (OPENCV model, `ba_refine_*=0`); calibration gives
 intrinsics **not** transferable scale; measure on the **dense cloud**; slice at **centerline
-points**; **% obstruction = area ratio** (scale-invariant — the primary deliverable); no SfM
-matcher overcomes low parallax (GlueMap was A/B-tested and rejected). See `CLAUDE.md`.
+points**; **% obstruction = area ratio** (scale-invariant — the primary deliverable). No SfM
+matcher creates geometry the *capture* didn't provide (GlueMap A/B-tested and rejected;
+MASt3R zero-shot doesn't predict or stitch); reconstructability is **not** predictable from
+frames — it is a global traversal property.
 
 ---
 
@@ -79,7 +91,7 @@ Older exploratory scripts are preserved in `_archive/` (git-ignored, on disk).
 Two conda envs (heavy, external to this repo):
 
 - **`depth-eval`** — Python driver: `cv2`, `pycolmap` (4.0.4), `open3d`, `numpy` 2.x, `scipy`,
-  `matplotlib`. All `barbour30_*.py` scripts run here.
+  `matplotlib`. All `pipeline/` and `experiments/` scripts run here.
 - **`colmap-cuda`** — the `colmap` binary (CUDA MVS), invoked via subprocess.
 
 ```bash
@@ -136,11 +148,23 @@ python experiments/porcine/quality_compare.py tag:video:lo:hi:stride ...        
 
 ## Current results summary
 
-**Reconstruction (smart pipeline):** 8/12 landmarks **accepted**; **proximal subglottis 3/3**
+### Validation — is the geometry correct?
+
+- **C3VD ground-truth (real endoscopic dataset with a CT-derived mesh + poses):** the *same*
+  SfM+MVS recipe reconstructs `cecum_t1_a` to **0.15 mm camera-pose** accuracy and **1.22 mm
+  median surface** error (**76%** of the surface within 2 mm of ground truth). The pipeline
+  geometry is validated against real ground truth — see `evaluation/`.
+- **Synthetic phantom:** on a rendered textured tube of known radius, the pipeline recovers the
+  radius to **1.8%**. This validates the *metrology math* on clean input (a synthetic render, not
+  a physical-tower capture), so real-video error is **data-limited, not algorithmic**.
+
+### Human videos — scale-free % obstruction
+
+**Reconstruction:** 8/12 subglottic landmarks **accepted**; **proximal subglottis 3/3**
 reproducible across `2-V2`, `25-V1`, `32-V2`. The pipeline **rejects** rather than fakes the
 hard cases (fragmentation / open rings / estimator disagreement).
 
-**Scale-free % obstruction** (area ratio, scene units, **no mm**, within-video only):
+**% obstruction** (area ratio, scene units, **no mm**, within-video only):
 
 | video | result | quality |
 |---|---|---|
@@ -148,17 +172,26 @@ hard cases (fragmentation / open rings / estimator disagreement).
 | **25-V1** | ~24% area (band 21–28%) | **non-monotonic / noisy** — low confidence |
 | **32-V2** | not obtainable | global subglottic rings all noisy (r_std/r_med 0.43–0.91) |
 
-So a trustworthy scale-free % is reliable on **1 of 3 videos** today.
+So a trustworthy scale-free % is reliable on **1 of 3 videos** today — the limit is *capture*
+(dwelling scope, partial wall coverage, low dense-wall texture at the narrowest ring), not the code.
 
-**Porcine cohort** (controlled study, 4D-CT pending): the *same* pipeline reconstructs pig airways
-wherever the scope runs a steady, centered, advancing pass — pig1 (normal trachea) and pig5
-(continuous clean tube, f5800–6900). The pig footage is ~2× blurrier and ~30% dimmer than the best
-human clip (60 fps → half exposure), which roughens the *dense wall* but **not** the *poses*
-(pig1 sparse recon = 203/203, reproj 1.59 ≈ 2-V2's 201/201, 1.52). Absolute caliber is gated on the
-incoming 4D-CT.
+### Porcine cohort — ongoing (4D-CT pending)
 
-**Phantom validation:** the pipeline recovers a known tube radius to **1.8%** — errors on real
-video are **data-limited, not algorithmic**.
+Controlled porcine study (calibration clip per scope + 4D-CT to come). The **same single pipeline**
+reconstructs pig airways wherever the scope runs a steady, centered, advancing pass:
+
+| pig | window | outcome |
+|---|---|---|
+| **pig1** (normal trachea) | f6736–7141 | sparse recon **203/203**, reproj **1.59** — clean C-rings |
+| **pig5** | f5800–6900 | **continuous clean tube**; cleanest window f6300–6600 = closed lumen annulus, camera dead-center — best porcine lumen |
+| **pig4** | f1700–2100 | one **partial ring**; rest of the window dwells/darkens → cones & fragments |
+| pig2 / pig3 | — | not yet cleanly recovered (pig3 footage is dark) |
+
+**Video-quality gap (measured):** pig footage is **~2× blurrier** and **~30% dimmer** than the best
+human clip — consistent with **60 fps halving the per-frame exposure**. Crucially this roughens the
+**dense wall** but **not** the **poses**: pig1's sparse recon (203/203, reproj 1.59) matches 2-V2's
+(201/201, 1.52). So the fix is capture (30 fps + more light), not the pipeline. Absolute caliber (mm)
+is gated on the incoming **4D-CT**.
 
 Example figures (in [`docs/figures/`](docs/figures)):
 `reconstructions_all_videos.png`, `landmark_rings_by_video.png`, `obstruction_2-V2.png`,
@@ -175,13 +208,15 @@ Example figures (in [`docs/figures/`](docs/figures)):
   *moving, specular* instrument; tube bores/rims are *specular/overexposed* and don't
   reconstruct; the laryngoscope slot is off-screen; the telescope can't self-image). All
   CSA/DCE are **scene units only**. Absolute mm remains **capture-protocol-gated**.
-- **No CT-paired validation completed.** The one CT-paired video (`16_v1`) reaches the carina
-  and mainstems *visually*, but its slow, dwelling (low-parallax) scope fragments/collapses in
-  SfM — no connected model, no recoverable scale — so the CT DCE comparison could not be done.
+- **No _airway_ CT-paired validation yet.** The geometry is validated on the C3VD colon dataset
+  (0.15 mm pose, 1.22 mm surface), but no *airway* has been checked against its own CT. The one
+  CT-paired airway video (`16_v1`) reaches the carina/mainstems *visually*, but its **dwelling
+  scope never traverses** the region, so SfM fragments — no connected model, no scale. The porcine
+  **4D-CT** is the pending route to airway ground truth.
 - **Scale-free % is reliable on only 1/3 videos.** The subglottis (the clinical target) is
-  data-limited: low texture, low parallax, and partial angular coverage of the narrowest ring;
-  the reference is the *patient's own trachea*, not a normative airway — this is **not** a
-  final Myer–Cotton grade.
+  *capture*-limited: dwelling / off-center scope motion, partial angular coverage of the narrowest
+  ring, and low dense-wall texture; the reference is the *patient's own trachea*, not a normative
+  airway — this is **not** a final Myer–Cotton grade.
 - **COLMAP MVS is texture-hungry**; clean *pose* recovery does not imply a clean *wall*
   surface. This motivates the next method (`NEW_METHOD_SCOPE.md`).
 - Some videos use **borrowed calibration** (e.g., `32-V2` borrows `32_v1`) — provisional.
