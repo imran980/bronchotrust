@@ -62,3 +62,6 @@ runs/barbour30/airwayfit/recon_25v1_subglottis/images/
 runs/barbour30/airwayfit/recon_25v1_subglottis/*.db
 evaluation/tests/_selftest_out/
 evaluation/**/__pycache__/
+
+# Parked/withdrawn WACV draft (kept on disk, not pushed)
+paper/

@@ -42,18 +42,35 @@ matcher overcomes low parallax (GlueMap was A/B-tested and rejected). See `CLAUD
 
 ---
 
-## Key scripts
+## Repository structure
 
-| script | purpose |
-|---|---|
-| `barbour30_smart.py`    | smart 30-frame **selection** (quality gating + coverage-diversity) |
-| `barbour_pipeline.py`   | **end-to-end** per (video, landmark): select → COLMAP → MVS → CSA/DCE, adaptive fallback |
-| `barbour30.py` / `barbour30_dense.py` / `barbour30_report.py` | sparse screen / dense+measure / report table |
-| `batch_dense.py`        | long-window **global** reconstruction (one connected model = one scale) |
-| `geometry_debug_32v2.py`/`batch_render.py` | medial-axis centerline, cross-section, organ renders |
-| `barbour30_bridge.py` / `barbour30_band.py` | scale-free **% obstruction** (global common scale, stability band) |
-| `final_ply_render.py`   | presentation renders from each video's final `.ply` |
-| `phantom_test.py` / `phantom_gt_compare.py` | phantom validation (known radius) |
+```
+pipeline/          the validated recon + measurement recipe (one recipe for every video)
+  recover_clip.py      windowed harness: select → SfM (pinned) → merge → MVS → CSA → render
+  batch_dense.py       long-window GLOBAL reconstruction (one connected model = one scale)
+  barbour_dense_recon.py  Barbour-style dense reconstruction (CLAHE + COLMAP + MVS + Poisson)
+  calibrate_pig1.py    robust intrinsics calibration from a checkerboard clip (pinned output)
+  csa_run.py           partial-arc CSA / DCE on a dense fused cloud
+  centerline_csa.py    cloud medial-axis centerline + perpendicular cross-sections, 3 estimators
+  render_airway.py     presentation render of a fused airway cloud
+
+experiments/
+  porcine/         porcine cohort: SfM screen, MVS, ring-vs-funnel & cone-vs-tube geometry,
+                   video-quality comparison (recon_pig_sfm, mvs_and_view, screen_rings,
+                   render_dense_geom, cone_vs_tube, quality_compare, scan_quality, …)
+  clips/           per-clip reconstruction / measurement (recon_25v1, recon_31v1_bridge,
+                   fuse_32v2, obstruction_2v2, obstruction_25v1, measure_25v1_distal, …)
+  diagnostics/     targeted probes (flow_looming, csa_partialarc, ring_completeness,
+                   stage2_calib_compare)
+
+evaluation/        CT-ground-truth validation harness (unified ReconstructionResult API)
+direct_metrology/  short-axial-segment direct-metrology prototype
+redteam_phase0/    near-light photometric estimator red-team (NO-GO record)
+photometric_pivot/ photometric depth-cue feasibility probes (NO-GO record)
+docs/              lightweight example figures + reports (the only tracked outputs)
+```
+
+Older exploratory scripts are preserved in `_archive/` (git-ignored, on disk).
 
 ---
 
@@ -75,29 +92,44 @@ Input videos and per-session calibration live **outside** the repo (git-ignored)
 
 ---
 
-## How to run — smart local-batch reconstruction
+## How to run
 
-The main entry point runs the whole per-landmark pipeline with the adaptive fragmentation
-fallback and strict acceptance (1 connected component **and** closed ring, cov ≥ 60% &
-r_std/r_med ≤ 0.35 **and** CSA-estimator spread ≤ 1.3×):
+**One command per windowed clip** — the validated harness selects frames, runs pinned-intrinsics
+SfM (exhaustive), auto-bridges fragments (`model_merger`), runs 4-GPU dense MVS, then measures
+and renders. `--target_fps` normalizes frame rate (inert on 30 fps clips; stride 2 on 60 fps):
 
 ```bash
-# all videos × landmarks (glottis / prox-subglottis / dist-subglottis / trachea)
-python barbour_pipeline.py --videos 2-V2,25-V1,32-V2 --landmarks glottis,prox_subglottis,dist_subglottis,trachea_ref
+# human 30 fps clip (subglottis window)
+python pipeline/recover_clip.py --video 2-V2.MP4 --session 2_v2 --lo 900 --hi 1100 \
+       --out runs/own_data/recon_2v2
 
-# one landmark (fast validation)
-python barbour_pipeline.py --videos 25-V1 --landmarks prox_subglottis
+# 60 fps porcine clip (fps-normalized to 30)
+python pipeline/recover_clip.py --video "Pig Trachea 1 Video.mp4" --session pig1 \
+       --lo 6736 --hi 7141 --out runs/own_data/porcine/pig1 --target_fps 30
 ```
-Per accepted landmark it writes `runs/barbour30/batches/<name>/`: `A_organ_cloud.png`,
-`B_centerline.png`, `landmarks.png`, `reproject_check.png`, `measure.json`; and the run
-writes `runs/barbour30/pipeline_report.json` + `pipeline_overview.png`.
 
-Supporting steps:
+**Global one-model reconstruction** (both rings in one scale, for a scale-free % obstruction):
 ```bash
-python barbour_pipeline.py ... ; python barbour30_report.py     # acceptance table
-python batch_dense.py --video 2-V2.MP4 --session 2_v2 --lo 870 --hi 1200 --out runs/batch4/2-V2   # global model
-python barbour30_bridge.py ; python barbour30_band.py            # scale-free % obstruction + stability band
-python final_ply_render.py                                       # presentation renders
+python pipeline/batch_dense.py --video 2-V2.MP4 --session 2_v2 --lo 870 --hi 1200 --out runs/batch4/2-V2
+```
+
+**Measure / render** a fused cloud directly:
+```bash
+python pipeline/csa_run.py       runs/.../fused.ply  2-V2  runs/.../csa_profile.png   # CSA / DCE
+python pipeline/centerline_csa.py runs/.../fused.ply                                   # centerline + 3-estimator rings
+python pipeline/render_airway.py  runs/.../fused.ply  2-V2  runs/.../airway.png         # presentation render
+```
+
+**Calibration** (per-scope intrinsics from a checkerboard clip → pinned `intrinsics_pinned.json`):
+```bash
+python pipeline/calibrate_pig1.py    # robust board detection + iterative outlier rejection
+```
+
+**Porcine geometry checks** (ring-vs-funnel, cone-vs-tube, video-quality comparison):
+```bash
+python experiments/porcine/screen_rings.py  s_p5_a:"Pig Trachea 5.mp4":5800:6200 ...   # chunk ring/funnel map
+python experiments/porcine/cone_vs_tube.py   fused.ply sparse_dir TAG                    # radius profile (tube vs cone)
+python experiments/porcine/quality_compare.py tag:video:lo:hi:stride ...                 # sharpness/brightness/texture
 ```
 
 ---
@@ -117,6 +149,13 @@ hard cases (fragmentation / open rings / estimator disagreement).
 | **32-V2** | not obtainable | global subglottic rings all noisy (r_std/r_med 0.43–0.91) |
 
 So a trustworthy scale-free % is reliable on **1 of 3 videos** today.
+
+**Porcine cohort** (controlled study, 4D-CT pending): the *same* pipeline reconstructs pig airways
+wherever the scope runs a steady, centered, advancing pass — pig1 (normal trachea) and pig5
+(continuous clean tube, f5800–6900). The pig footage is ~2× blurrier and ~30% dimmer than the best
+human clip (60 fps → half exposure), which roughens the *dense wall* but **not** the *poses*
+(pig1 sparse recon = 203/203, reproj 1.59 ≈ 2-V2's 201/201, 1.52). Absolute caliber is gated on the
+incoming 4D-CT.
 
 **Phantom validation:** the pipeline recovers a known tube radius to **1.8%** — errors on real
 video are **data-limited, not algorithmic**.

@@ -1,0 +1,38 @@
+{
+  "test": "pretrained depth (Depth-Anything-V2-Small, GENERAL/non-endoscopic; quick probe, NOT GT)",
+  "model": "depth-anything/Depth-Anything-V2-Small-hf",
+  "endoscopy_specific": false,
+  "proximal": {
+    "n": 5,
+    "CSA_rel": {
+      "median": 0.9425442440795988,
+      "cov_pct": 16.5
+    },
+    "DCE_rel": {
+      "median": 1.0954837306982959,
+      "cov_pct": 7.7
+    }
+  },
+  "distal": {
+    "n": 5,
+    "CSA_rel": {
+      "median": 0.45273250211156635,
+      "cov_pct": 63.0
+    },
+    "DCE_rel": {
+      "median": 0.7592344334099592,
+      "cov_pct": 27.1
+    }
+  },
+  "CSA_ratio_prox_over_dist": 2.082,
+  "DCE_ratio_prox_over_dist": 1.443,
+  "implied_CSA_obstruction_pct": -108.2,
+  "COLMAP_sanity": {
+    "CSA_ratio": 0.68,
+    "DCE_ratio": 0.82,
+    "obstruction_CSA_pct": 32.0
+  },
+  "ordering_prox_lt_dist": false,
+  "ratio_near_colmap": false,
+  "stable": false
+}

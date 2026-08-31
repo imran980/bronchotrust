@@ -1,8 +1,10 @@
 numpy
+scipy
 matplotlib
 opencv-python
 tqdm
 open3d
+pycolmap==4.0.4
 torch
 torchvision
 transformers>=4.40

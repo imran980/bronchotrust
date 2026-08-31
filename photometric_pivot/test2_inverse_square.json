@@ -1,0 +1,44 @@
+{
+  "test": "inverse-square near-light baseline (relative depth; NO mm)",
+  "proximal": {
+    "n": 5,
+    "CSA_rel": {
+      "median": 0.8766396023835675,
+      "cov_pct": 7.4
+    },
+    "DCE_rel": {
+      "median": 1.0564905149766692,
+      "cov_pct": 3.7
+    },
+    "angular_r_px": {
+      "median": 200.4012614321869,
+      "cov_pct": 12.5
+    }
+  },
+  "distal": {
+    "n": 5,
+    "CSA_rel": {
+      "median": 0.6873781622812936,
+      "cov_pct": 9.4
+    },
+    "DCE_rel": {
+      "median": 0.9355196729112258,
+      "cov_pct": 5.0
+    },
+    "angular_r_px": {
+      "median": 208.62431322477022,
+      "cov_pct": 2.4
+    }
+  },
+  "CSA_ratio_prox_over_dist": 1.275,
+  "DCE_ratio_prox_over_dist": 1.129,
+  "implied_CSA_obstruction_pct": -27.5,
+  "COLMAP_sanity": {
+    "CSA_ratio": 0.68,
+    "DCE_ratio": 0.82,
+    "obstruction_CSA_pct": 32.0
+  },
+  "ordering_prox_lt_dist": false,
+  "ratio_near_colmap": false,
+  "stable": true
+}
