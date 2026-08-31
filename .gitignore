@@ -65,3 +65,6 @@ evaluation/**/__pycache__/
 
 # Parked/withdrawn WACV draft (kept on disk, not pushed)
 paper/
+
+# Internal agent plan / verification guide (kept local, not published)
+CLAUDE.md
