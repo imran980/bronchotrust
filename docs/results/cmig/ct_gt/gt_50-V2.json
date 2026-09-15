@@ -1,0 +1,11 @@
+{
+  "case": "50-V2",
+  "series": "SER00003",
+  "zip": "50V2.zip",
+  "n_stations": 60,
+  "arclength_mm": 71.3590334703308,
+  "dce_median_mm": 9.119055078571,
+  "dce_min_mm": 4.305539952189052,
+  "dce_max_mm": 13.731652809351978,
+  "method": "TotalSegmentator trachea + smoothed-centroid centerline + tangent-corrected CSA"
+}

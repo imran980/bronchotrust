@@ -1,0 +1,16 @@
+\begin{tabular}{llrrrrrr}
+\toprule
+ & & \multicolumn{3}{c}{All-slice baseline} & \multicolumn{3}{c}{Gated estimator} \\
+\cmidrule(lr){3-5}\cmidrule(lr){6-8}
+Patient & CT & RMSE (mm) & bias (mm) & $n$ & RMSE (mm) & bias (mm) & $n$ \\
+\midrule
+2-V2 & chest, insp., 1 mm & 1.44 & -0.01 & 27 & 1.07 & -0.05 & 40 \\
+20-V1 & chest, insp.+exp. pair, 1 mm & 1.13 & +0.16 & 31 & 0.83 & +0.10 & 24 \\
+50-V2 & chest, insp., 1.5 mm & 2.41 & +0.92 & 44 & 1.00 & +0.02 & 16 \\
+\midrule
+Mean of patients & & 1.66 & & & 0.97 & & \\
+Pooled & & 1.85 & +0.45 & 102 & 0.99 & +0.01 & 80 \\
+95\% LoA (mm) & & \multicolumn{3}{c}{[-3.10, +3.99]} & \multicolumn{3}{c}{[-1.94, +1.96]} \\
+Pearson $r$ & & \multicolumn{3}{c}{0.82} & \multicolumn{3}{c}{0.95} \\
+\bottomrule
+\end{tabular}

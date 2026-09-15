@@ -1,25 +1,30 @@
 """Systematic airway-recovery harness. One command per windowed clip. Encodes the proven recipe:
   window -> bezel + gentle CLAHE brighten -> pinned-intrinsics SfM (exhaustive, mild SIFT) ->
   auto-diagnose fragmentation -> model_merger bridge -> 4-GPU MVS -> partial-arc CSA -> render.
-Reports each stage + a final verdict per clip. Does NOT auto-apply motion-cut (that's clip-specific;
-run flow_looming.py first if a clip is jerky). Absolute paths; calib auto-located in either layout.
+Reports each stage + a final verdict per clip. Does NOT auto-apply motion-cut (that's clip-specific).
 
-Usage: python recover_clip.py --video <path|name> --session <sess> --lo L --hi H --out <dir> [--gpus 0,1,2,3]
+Usage: python pipeline/recover_clip.py --video <clip> --calib <intrinsics.json> --lo L --hi H --out <dir>
+                                       [--session NAME] [--gpus 0,1,2,3] [--clahe 3.0] [--target_fps 30]
+  --calib   intrinsics json from pipeline/calibrate.py (pinned OPENCV; never refined in bundle adjustment)
+  --lo/--hi frame window (pick it from pipeline/contact_sheet.py); a steady, centred, monotonic pass works best
+Environment: BRONCHO_COLMAP (colmap binary, default "colmap"), BRONCHO_PY (interpreter for the post-steps,
+default: this one). Outputs: <out>/sparse/0 (poses), <out>/dense0/fused.ply (dense cloud), CSA profile + render PNGs.
 """
-import argparse, re, json, shutil, subprocess
+import argparse, re, json, os, shutil, subprocess, sys
 from pathlib import Path
 import numpy as np, cv2, pycolmap
 
-ROOT = Path("/home/mi3dr/projects/bronchotrust")
-COLMAP = "/home/mi3dr/.conda/envs/colmap-cuda/bin/colmap"
-PY = "/home/mi3dr/.conda/envs/depth-eval/bin/python"
+ROOT = Path(__file__).resolve().parents[1]
+COLMAP = os.environ.get("BRONCHO_COLMAP", "colmap")
+PY = os.environ.get("BRONCHO_PY", sys.executable)
 DARK_L = 12.0
 
 
-def find_calib(session):
-    a = ROOT / f"runs/retriage_first15/_calib/{session}/intrinsics_pinned.json"
-    b = ROOT / f"runs/own_data/retry/{session}_intrinsics.json"
-    for p in (a, b):
+def find_calib(session, explicit=None):
+    """explicit --calib path first; otherwise the two legacy per-session locations under runs/."""
+    cands = [Path(explicit)] if explicit else []
+    cands += [ROOT / f"runs/retriage_first15/_calib/{session}/intrinsics_pinned.json", ROOT / f"runs/own_data/retry/{session}_intrinsics.json"]
+    for p in cands:
         if p.exists():
             d = json.loads(p.read_text()); params = d.get("params_colmap") or d.get("params")
             return ",".join(f"{x:.10g}" for x in params), p
@@ -50,17 +55,21 @@ def span(model):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--video", required=True); ap.add_argument("--session", required=True)
+    ap.add_argument("--video", required=True); ap.add_argument("--calib", default=None, help="intrinsics json (pipeline/calibrate.py)")
+    ap.add_argument("--session", default=None, help="label; also used to locate a legacy calibration if --calib is omitted")
     ap.add_argument("--lo", type=int, required=True); ap.add_argument("--hi", type=int, required=True)
     ap.add_argument("--out", required=True); ap.add_argument("--gpus", default="0,1,2,3")
     ap.add_argument("--clahe", type=float, default=3.0); ap.add_argument("--mvs_size", default="1200")
     ap.add_argument("--target_fps", type=float, default=30.0)   # normalize input fps (inert on 30fps clips; stride 2 on 60fps)
     a = ap.parse_args()
     out = Path(a.out); img = out / "images"; msk = out / "masks"
-    video = Path(a.video) if Path(a.video).is_absolute() else Path("/home/mi3dr/dataset/real-broncho") / a.video
-    pstr, cpath = find_calib(a.session)
+    video = Path(a.video)
+    if not video.exists(): print(f"video not found: {video}"); return
+    if a.session is None: a.session = out.name
+    pstr, cpath = find_calib(a.session, a.calib)
     print(f"=== recover {a.session} f{a.lo}-{a.hi} | calib {cpath} | gpus {a.gpus} ===", flush=True)
-    if pstr is None: print("NO CALIB — abort"); return
+    if pstr is None: print("NO CALIB — pass --calib <intrinsics.json> (pipeline/calibrate.py); abort"); return
+    out.mkdir(parents=True, exist_ok=True)
 
     for d in (img, msk): shutil.rmtree(d, ignore_errors=True); d.mkdir(parents=True)
     mask = bezel(video); bez = mask.astype(np.uint8) * 255
@@ -123,8 +132,8 @@ def main():
     if not fused.exists(): print("[MVS] fusion produced no cloud"); return
     lab = a.session.replace("_", "-").upper()
     HERE = Path(__file__).resolve().parent
-    subprocess.run([PY, str(HERE / "csa_run.py"), str(fused), lab, str(ROOT / f"runs/own_data/renders/{a.session}_csa_profile.png")])
-    subprocess.run([PY, str(HERE / "render_airway.py"), str(fused), lab, str(ROOT / f"runs/own_data/renders/{a.session}_airway_recon.png")])
+    subprocess.run([PY, str(HERE / "csa_run.py"), str(fused), lab, str(out / f"{a.session}_csa_profile.png")])
+    subprocess.run([PY, str(HERE / "render_airway.py"), str(fused), lab, str(out / f"{a.session}_airway_recon.png")])
     shutil.rmtree(dense / "stereo", ignore_errors=True); shutil.rmtree(dense / "images", ignore_errors=True); shutil.rmtree(img, ignore_errors=True); db.unlink(missing_ok=True)
     print(f"[DONE] {a.session}: fused.ply + CSA + airway render saved", flush=True)
 

@@ -68,3 +68,7 @@ paper/
 
 # Internal agent plan / verification guide (kept local, not published)
 CLAUDE.md
+
+# queue runner state
+*.lock
+*.tmp

@@ -1,246 +1,179 @@
-# bronchotrust — Barbour-style COLMAP airway reconstruction (baseline)
+# bronchotrust — CT-validated airway calibre from monocular bronchoscopy video
 
-Monocular pediatric-airway (bronchoscopy/laryngoscopy) 3D reconstruction and
-**scale-free % obstruction** measurement from clinical video, using COLMAP
-Structure-from-Motion + Multi-View Stereo with **smart local-batch frame selection**.
+Monocular paediatric-airway 3D reconstruction and calibre measurement from routine bronchoscopy /
+laryngoscopy video. A standard Structure-from-Motion + Multi-View Stereo backbone (COLMAP, pinned
+per-session intrinsics) is kept fixed; the contribution is the **gated measurement layer** on top of it,
+its **validation against CT**, and a reviewed cohort showing that **capture behaviour, not optics,
+decides whether an airway is measurable**.
 
-One pipeline, applied unchanged across a clinical human cohort and a controlled porcine study,
-with its geometry validated on the C3VD ground-truth dataset. It is a research feasibility
-pipeline, **not** a validated clinical tool — see [Known limitations](#known-limitations).
+It is a research pipeline, not a clinical device. Every number it produces comes with the check that
+makes it trustworthy (coverage gate, estimator agreement, self-consistency, span guard) and the
+pipeline **rejects rather than fakes** when a check fails.
 
-> The next method (texture-free silhouette/shading lumen fitting, using COLMAP poses only as
-> initialization) is scoped separately in [`NEW_METHOD_SCOPE.md`](NEW_METHOD_SCOPE.md).
+![pipeline](docs/figures/fig_pipeline.png)
 
 ---
 
-## Pipeline overview
+## What it does
 
 ```
-video ─► smart frame selection ─► COLMAP SfM (pinned intrinsics, exhaustive)
-      ─► dense MVS ─► airway point cloud ─► medial-axis centerline
-      ─► perpendicular cross-sections ─► CSA / DCE per ring
-      ─► (one connected model) scale-free % obstruction
+video ─► sequential decode, CLAHE, quality gate ─► frame WINDOW (chosen from a contact sheet)
+      ─► COLMAP SfM, intrinsics pinned (never refined), exhaustive matching, fragment bridging
+      ─► dense MVS point cloud (no mesh is measured)
+      ─► cross-sections perpendicular to the lumen axis: partial-arc circle + ellipse fit
+      ─► gates: coverage ≥ 0.75 · circle residual < 0.15 · circle/ellipse agree < 30% · ends excluded
+      ─► CSA / D_CE profile ─► scale-free %obstruction = 1 − A_min/A_ref
+      ─► (with CT) constrained isotropic Sim(3) registration → absolute calibre in mm
 ```
 
-Three things learned the hard way, baked into the design:
+Three things learned the hard way and baked into the design:
 
-- **CAPTURE BEHAVIOR decides success — not parallax magnitude.** A clean tube needs the scope to
-  advance **steadily and monotonically through** the lumen, kept **centered** (the ring in view),
-  without **dwelling**, **reversing**, or going **dark/blurred**. Per-frame triangulation angle is
-  uniformly ~3° in *both* successes and failures — it does **not** discriminate; sufficient forward
-  **traversal** (≥ ~1.7 median-depths in one run) does. Where the scope dwells or drifts off-center
-  you get a cone / one-sided cup, not a tube. A wall the scope never images can't be reconstructed
-  (coverage), but that is a *capture* fact, not a parallax or matcher limit — swapping matchers
-  (GlueMap, MASt3R) or masking features does **not** help.
-- **Frame SELECTION is the decisive lever you can control.** Naive contiguous windows fail the
-  low-texture subglottis; *smart* selection — CLAHE + sharpness/glare/contrast gating +
-  viewpoint-coverage-diversity sampling + adaptive pool (±30 → ±20 → ±45) — closes clean
-  subglottic ring **shapes** where naive windows cannot (8/12 landmarks accepted; proximal
-  subglottis 3/3 reproducible across videos). For 60 fps footage two knobs matter: **fps
-  normalization** (`--target_fps 30` → stride 2) and a **SIFT feature cap** (rich cartilage
-  texture otherwise overloads bundle adjustment).
-- **COLMAP nails poses; the dense wall is the weak link.** Feature-SfM/MVS needs texture, and
-  the airway wall is textureless/specular. Rings are measured on the **dense MVS cloud**
-  (not the Poisson mesh), sliced **at centerline points** (a forward scope images the wall
-  *ahead* of itself), with three CSA estimators that must agree.
+- **Capture behaviour decides success.** A measurable tube needs the scope to move steadily and
+  monotonically through the lumen, centred, without dwelling, reversing, going dark or pressing on the
+  wall. Per-frame parallax does not discriminate successes from failures; the traversal does. Whole-video
+  statistics (blur, centring, speed) do **not** predict measurability (Spearman ρ = +0.19 / +0.17 / −0.14,
+  all n.s., n = 29). Frame-by-frame review does: the failure classes are dynamic wall motion,
+  mucosal abnormality, instrument in the field, wall contact / glare, and non-airway footage.
+- **Frame selection is the lever you control.** Manual windowing onto a steady centred pass from a
+  dense contact sheet roughly doubled the cohort yield and rescued clips that failed on their whole
+  traversal (17-V1 by the pullback, 26-V2 by the pass before a wall collapse, 19-V1 by the right window
+  plus the right calibration). Nothing else — matchers (GlueMap, MASt3R), masking, deblurring — helped.
+- **Poses are reliable, the dense wall is the weak link.** Calibre is measured on the dense MVS cloud,
+  sliced at centreline points, and only where the ring closes. A dual-pass (descent + withdrawal) model
+  constrains the global scale but thickens the wall; measure along one monotonic pass.
 
-### Locked design decisions
-Intrinsics are **pinned, never refined** (OPENCV model, `ba_refine_*=0`); calibration gives
-intrinsics **not** transferable scale; measure on the **dense cloud**; slice at **centerline
-points**; **% obstruction = area ratio** (scale-invariant — the primary deliverable). No SfM
-matcher creates geometry the *capture* didn't provide (GlueMap A/B-tested and rejected;
-MASt3R zero-shot doesn't predict or stitch); reconstructability is **not** predictable from
-frames — it is a global traversal property.
+---
+
+## Results (Computerized Medical Imaging and Graphics manuscript, September 2026)
+
+**Feasibility.** 29 paediatric examinations from two clinical batches reconstructed with the same
+pipeline: **18 measurable tubes** (3 of them CT-validated), 5 partially measurable, 6 not measurable.
+One further patient (19-V1) was rescued after the cohort table was frozen.
+
+**Calibre accuracy against CT** (D_CE at matched arclength, constrained isotropic Sim(3), accepted
+cross-sections only):
+
+| Patient | CT | Gated RMSE (mm) | bias (mm) | n | note |
+|---|---|---|---|---|---|
+| 2-V2 | inspiratory, 1 mm | **1.07** | −0.05 | 40 | dual-pass model, measured along the withdrawal pass |
+| 20-V1 | insp.+exp. pair, 1 mm | **0.83** | +0.10 | 24 | tracheobronchomalacia (dynamic case) |
+| 50-V2 | inspiratory, 1.5 mm | **1.00** | +0.02 | 16 | proximal trachea, window cut before the carina |
+| pooled (3) | | **0.99** | +0.01 | 80 | LoA [−1.94, +1.96] mm, r = 0.95; ungated baseline 1.85 |
+| 19-V1 (added) | CTA, 0.6 mm | **0.72** | −0.14 | 16 | ground truth re-derived (see below); 5 windows from 2 endoscopies agree 0.61–0.74 |
+
+**Dynamic airway.** 20-V1's paired inspiratory/expiratory CT shows a 45 % expiratory reduction in
+tracheal cross-section (33 → 18 mm²); the reconstruction matches the patent inspiratory phase and the
+clinical diagnosis of moderate tracheobronchomalacia was confirmed from the chart.
+
+**Scale-free %obstruction without CT.** On the 16 measurable airways, 11 read ≤ 30 %, the empirical
+noise floor (a clinically normal airway reads 29 %); values above it are either flagged by profile CV
+> 0.15 or clinically unconfirmed. The CT-normal 2-V2 reads 18 %.
+
+**External check.** The same recipe on the public C3VD benchmark (real endoscope, CT-registered meshes):
+median surface accuracy 1.40 mm across 5 sequences, camera-pose residual 0.15 mm; synthetic phantom
+radius recovered to 1.8 %.
+
+**Method boundary.** 30-V2 carries a near-occlusive tracheal stenosis. The pipeline reconstructs the
+proximal segment the scope can reach (35/48 gated) but every CT fit collapses onto a 4–7 mm sliver; the
+**span guard** (mapped length ≥ 10 mm and ≥ 25 % of the CT segment) rejects it. A low RMSE alone is not
+a measurement.
+
+Figures: [`docs/figures/`](docs/figures) — CT validation, cohort gallery, capture mechanisms, exemplar
+cases, the 26-V2 wall-collapse event, and the 19-V1 rescue. Tables and per-case JSON:
+[`docs/results/cmig/`](docs/results/cmig).
+
+![CT validation](docs/figures/ct3_validation_figure.png)
+
+---
+
+## Using it on a new video
+
+Full walkthrough in [`docs/NEW_VIDEO.md`](docs/NEW_VIDEO.md). The short version:
+
+```bash
+export BRONCHO_COLMAP=/path/to/colmap          # COLMAP 3.13 with CUDA
+# 1. per-session intrinsics from the checkerboard clip (14x13 inner corners), pinned in every later step
+python pipeline/calibrate.py --video "SESSION Calibration Video.MP4" --out calib/SESSION_intrinsics.json
+# 2. contact sheet -> read off the frame window of a steady, centred, monotonic pass
+python pipeline/contact_sheet.py --video SESSION.MP4 --out sheets/SESSION.png
+# 3. reconstruct that window (SfM + MVS), unchanged recipe
+python pipeline/recover_clip.py --video SESSION.MP4 --calib calib/SESSION_intrinsics.json \
+       --lo 1040 --hi 1320 --out runs/SESSION_w1 --gpus 0,1
+# 4. is it measurable?  (>=20 gated interior stations = measurable tube)
+python pipeline/eval_recon.py runs/SESSION_w1
+# 5. scale-free calibre profile and %obstruction
+python pipeline/measure_csa.py runs/SESSION_w1/dense0/fused.ply --out runs/SESSION_w1/csa.json --plot runs/SESSION_w1/csa.png
+# 6. (if a thin-slice CT exists) ground truth, then absolute-mm scoring with all validity rules
+python pipeline/ct_ground_truth.py --case SESSION --zip SESSION_CT.zip --out-dir ct_gt
+python pipeline/ct_score.py SESSION runs/SESSION_w1 --gt ct_gt/gt_SESSION.npz
+```
+
+Several windows at once: put one job per line in a file and run `pipeline/run_queue.sh` (two workers,
+two GPUs each, results auto-evaluated). Calibration is **never** borrowed silently; if a session has no
+board video, match its endoscope image circle to a calibrated session of the same scope and flag it.
 
 ---
 
 ## Repository structure
 
 ```
-pipeline/          the validated recon + measurement recipe (one recipe for every video)
-  recover_clip.py      windowed harness: select → SfM (pinned) → merge → MVS → CSA → render
-  batch_dense.py       long-window GLOBAL reconstruction (one connected model = one scale)
-  barbour_dense_recon.py  Barbour-style dense reconstruction (CLAHE + COLMAP + MVS + Poisson)
-  calibrate_pig1.py    robust intrinsics calibration from a checkerboard clip (pinned output)
-  csa_run.py           partial-arc CSA / DCE on a dense fused cloud
-  centerline_csa.py    cloud medial-axis centerline + perpendicular cross-sections, 3 estimators
-  render_airway.py     presentation render of a fused airway cloud
+pipeline/                 the pipeline: one recipe, applied unchanged to every video
+  calibrate.py              checkerboard video -> pinned OPENCV intrinsics (forced 14x13 board, isotropy gate)
+  contact_sheet.py          dense contact sheet + brightness / dark-lumen traces for window picking
+  recover_clip.py           window -> CLAHE -> SfM (pinned, exhaustive, fragment bridging) -> MVS -> cloud
+  eval_recon.py             measurability tiers (gated interior stations, coverage)
+  measure_csa.py            gated CSA profile + scale-free %obstruction on one cloud
+  ct_ground_truth.py        DICOM -> TotalSegmentator trachea -> D_CE profile (stenosis-aware)
+  ct_score.py               reconstruction vs CT: isotropic Sim(3), self-consistency rule, span guard
+  run_queue.sh              unattended batch runner (atomic job claiming)
+  csa_partialarc.py         partial-arc circle + ellipse cross-section fitting
+  airway_analysis.py        shared cloud utilities (cleaning, PCA-aligned renders, registration helpers)
+  csa_run.py / render_airway.py / centerline_csa.py / batch_dense.py / barbour_dense_recon.py
+  airway_gate.py            universal validity gate (v0 skeleton, see AIRWAY_GATE_DESIGN.md)
 
 experiments/
-  porcine/         porcine cohort: SfM screen, MVS, ring-vs-funnel & cone-vs-tube geometry,
-                   video-quality comparison (recon_pig_sfm, mvs_and_view, screen_rings,
-                   render_dense_geom, cone_vs_tube, quality_compare, scan_quality, …)
-  clips/           per-clip reconstruction / measurement (recon_25v1, recon_31v1_bridge,
-                   fuse_32v2, obstruction_2v2, obstruction_25v1, measure_25v1_distal, …)
-  diagnostics/     targeted probes (flow_looming, csa_partialarc, ring_completeness,
-                   stage2_calib_compare)
+  cmig_paper/             every figure, table and report of the manuscript (figstyle.py = design system),
+                          the CT-3 evaluation (ct3_*.py), cohort yield (gallery_v2.py), capture-behaviour
+                          analysis, robust CSA cohort table, calibration table, rescue summary
+  porcine/                porcine cohort experiments (4D-CT pending)
+  clips/, diagnostics/    per-clip and probe scripts from the development history
 
-evaluation/        CT-ground-truth validation harness (unified ReconstructionResult API)
-direct_metrology/  short-axial-segment direct-metrology prototype
-redteam_phase0/    near-light photometric estimator red-team (NO-GO record)
-photometric_pivot/ photometric depth-cue feasibility probes (NO-GO record)
-docs/              lightweight example figures + reports (the only tracked outputs)
+evaluation/               CT-ground-truth harness (registration, metrics, GroundTruth container)
+direct_metrology/, redteam_phase0/, photometric_pivot/   recorded negative results
+docs/                     figures, results JSON/tables, NEW_VIDEO.md
 ```
 
-Older exploratory scripts are preserved in `_archive/` (git-ignored, on disk).
+`runs/` (workspaces, clouds, renders) and the datasets are git-ignored and regenerable.
 
 ---
 
 ## Environment
 
-Two conda envs (heavy, external to this repo):
-
-- **`depth-eval`** — Python driver: `cv2`, `pycolmap` (4.0.4), `open3d`, `numpy` 2.x, `scipy`,
-  `matplotlib`. All `pipeline/` and `experiments/` scripts run here.
-- **`colmap-cuda`** — the `colmap` binary (CUDA MVS), invoked via subprocess.
-
-```bash
-pip install -r requirements.txt          # into the depth-eval env
-# colmap binary: /home/<you>/.conda/envs/colmap-cuda/bin/colmap
-```
-
-Input videos and per-session calibration live **outside** the repo (git-ignored):
-`dataset/…` (videos) and `runs/retriage_first15/_calib/<session>/intrinsics_pinned.json`.
-
----
-
-## How to run
-
-**One command per windowed clip** — the validated harness selects frames, runs pinned-intrinsics
-SfM (exhaustive), auto-bridges fragments (`model_merger`), runs 4-GPU dense MVS, then measures
-and renders. `--target_fps` normalizes frame rate (inert on 30 fps clips; stride 2 on 60 fps):
-
-```bash
-# human 30 fps clip (subglottis window)
-python pipeline/recover_clip.py --video 2-V2.MP4 --session 2_v2 --lo 900 --hi 1100 \
-       --out runs/own_data/recon_2v2
-
-# 60 fps porcine clip (fps-normalized to 30)
-python pipeline/recover_clip.py --video "Pig Trachea 1 Video.mp4" --session pig1 \
-       --lo 6736 --hi 7141 --out runs/own_data/porcine/pig1 --target_fps 30
-```
-
-**Global one-model reconstruction** (both rings in one scale, for a scale-free % obstruction):
-```bash
-python pipeline/batch_dense.py --video 2-V2.MP4 --session 2_v2 --lo 870 --hi 1200 --out runs/batch4/2-V2
-```
-
-**Measure / render** a fused cloud directly:
-```bash
-python pipeline/csa_run.py       runs/.../fused.ply  2-V2  runs/.../csa_profile.png   # CSA / DCE
-python pipeline/centerline_csa.py runs/.../fused.ply                                   # centerline + 3-estimator rings
-python pipeline/render_airway.py  runs/.../fused.ply  2-V2  runs/.../airway.png         # presentation render
-```
-
-**Calibration** (per-scope intrinsics from a checkerboard clip → pinned `intrinsics_pinned.json`):
-```bash
-python pipeline/calibrate_pig1.py    # robust board detection + iterative outlier rejection
-```
-
-**Porcine geometry checks** (ring-vs-funnel, cone-vs-tube, video-quality comparison):
-```bash
-python experiments/porcine/screen_rings.py  s_p5_a:"Pig Trachea 5.mp4":5800:6200 ...   # chunk ring/funnel map
-python experiments/porcine/cone_vs_tube.py   fused.ply sparse_dir TAG                    # radius profile (tube vs cone)
-python experiments/porcine/quality_compare.py tag:video:lo:hi:stride ...                 # sharpness/brightness/texture
-```
-
----
-
-## Current results summary
-
-### Validation — is the geometry correct?
-
-- **C3VD ground-truth (real endoscopic dataset with a CT-derived mesh + poses):** the *same*
-  SfM+MVS recipe reconstructs `cecum_t1_a` to **0.15 mm camera-pose** accuracy and **1.22 mm
-  median surface** error (**76%** of the surface within 2 mm of ground truth). The pipeline
-  geometry is validated against real ground truth — see `evaluation/`.
-- **Synthetic phantom:** on a rendered textured tube of known radius, the pipeline recovers the
-  radius to **1.8%**. This validates the *metrology math* on clean input (a synthetic render, not
-  a physical-tower capture), so real-video error is **data-limited, not algorithmic**.
-
-### Human videos — scale-free % obstruction
-
-**Reconstruction:** 8/12 subglottic landmarks **accepted**; **proximal subglottis 3/3**
-reproducible across `2-V2`, `25-V1`, `32-V2`. The pipeline **rejects** rather than fakes the
-hard cases (fragmentation / open rings / estimator disagreement).
-
-**% obstruction** (area ratio, scene units, **no mm**, within-video only):
-
-| video | result | quality |
-|---|---|---|
-| **2-V2**  | **~33% area (band 24–38%)**, ~18% diameter | clean **monotonic** narrowing — trustworthy |
-| **25-V1** | ~24% area (band 21–28%) | **non-monotonic / noisy** — low confidence |
-| **32-V2** | not obtainable | global subglottic rings all noisy (r_std/r_med 0.43–0.91) |
-
-So a trustworthy scale-free % is reliable on **1 of 3 videos** today — the limit is *capture*
-(dwelling scope, partial wall coverage, low dense-wall texture at the narrowest ring), not the code.
-
-### Porcine cohort — ongoing (4D-CT pending)
-
-Controlled porcine study (calibration clip per scope + 4D-CT to come). The **same single pipeline**
-reconstructs pig airways wherever the scope runs a steady, centered, advancing pass:
-
-| pig | window | outcome |
-|---|---|---|
-| **pig1** (normal trachea) | f6736–7141 | sparse recon **203/203**, reproj **1.59** — clean C-rings |
-| **pig5** | f5800–6900 | **continuous clean tube**; cleanest window f6300–6600 = closed lumen annulus, camera dead-center — best porcine lumen |
-| **pig4** | f1700–2100 | one **partial ring**; rest of the window dwells/darkens → cones & fragments |
-| pig2 / pig3 | — | not yet cleanly recovered (pig3 footage is dark) |
-
-**Video-quality gap (measured):** pig footage is **~2× blurrier** and **~30% dimmer** than the best
-human clip — consistent with **60 fps halving the per-frame exposure**. Crucially this roughens the
-**dense wall** but **not** the **poses**: pig1's sparse recon (203/203, reproj 1.59) matches 2-V2's
-(201/201, 1.52). So the fix is capture (30 fps + more light), not the pipeline. Absolute caliber (mm)
-is gated on the incoming **4D-CT**.
-
-Example figures (in [`docs/figures/`](docs/figures)):
-`reconstructions_all_videos.png`, `landmark_rings_by_video.png`, `obstruction_2-V2.png`,
-`obstruction_band_2-V2.png`; example reports in [`docs/results/`](docs/results).
-
-![all-video reconstructions](docs/figures/reconstructions_all_videos.png)
+- **Python driver** (conda env `depth-eval`): Python 3.11, numpy 1.26, scipy 1.17, opencv 4.13,
+  open3d 0.18, pycolmap 4.0.4, matplotlib 3.10, pydicom 3.0, nibabel 5.4, scikit-image 0.26.
+  `pip install -r requirements.txt`.
+- **COLMAP 3.13 (CUDA)** as a binary: set `BRONCHO_COLMAP`. Post-steps run under `BRONCHO_PY`
+  (defaults to the current interpreter).
+- **TotalSegmentator** (only for CT ground truth): `python -m venv --system-site-packages ~/.venvs/totalseg
+  && ~/.venvs/totalseg/bin/pip install TotalSegmentator "numpy<2"`; set `TOTALSEG_BIN` and
+  `TOTALSEG_HOME_DIR` (weights, 1.4 GB, downloaded on first use). Run the full task; the `--roi_subset`
+  shortcut under-segments.
+- Two ops facts worth knowing: pycolmap and Open3D-CUDA in one process can segfault (the tools parse
+  `run.log` instead), and Open3D's EGL renderer fails while COLMAP saturates the GPUs (renders use
+  matplotlib).
 
 ---
 
 ## Known limitations
 
-- **No absolute mm scale.** Monocular SfM is gauge-free, and no static, non-specular,
-  known-size object appears in a connected model with the airway (the Hopkins shaft is a
-  *moving, specular* instrument; tube bores/rims are *specular/overexposed* and don't
-  reconstruct; the laryngoscope slot is off-screen; the telescope can't self-image). All
-  CSA/DCE are **scene units only**. Absolute mm remains **capture-protocol-gated**.
-- **No _airway_ CT-paired validation yet.** The geometry is validated on the C3VD colon dataset
-  (0.15 mm pose, 1.22 mm surface), but no *airway* has been checked against its own CT. The one
-  CT-paired airway video (`16_v1`) reaches the carina/mainstems *visually*, but its **dwelling
-  scope never traverses** the region, so SfM fragments — no connected model, no scale. The porcine
-  **4D-CT** is the pending route to airway ground truth.
-- **Scale-free % is reliable on only 1/3 videos.** The subglottis (the clinical target) is
-  *capture*-limited: dwelling / off-center scope motion, partial angular coverage of the narrowest
-  ring, and low dense-wall texture; the reference is the *patient's own trachea*, not a normative
-  airway — this is **not** a final Myer–Cotton grade.
-- **COLMAP MVS is texture-hungry**; clean *pose* recovery does not imply a clean *wall*
-  surface. This motivates the next method (`NEW_METHOD_SCOPE.md`).
-- Some videos use **borrowed calibration** (e.g., `32-V2` borrows `32_v1`) — provisional.
-
----
-
-## Required future data (to reach clinical validation)
-
-1. **Same-day paired video + CT** of the same airway, where the bronchoscopy **reaches and
-   reconstructs** the CT-measured region (distal trachea / mainstems), so reconstructed DCE can
-   be checked against a CT ground truth.
-2. **A valid in-frame scale anchor** — a **matte, non-specular, known-size** object (a marked
-   probe/ruler, or the laryngoscope aperture deliberately kept in view) held **static** in the
-   **same continuous pass** as the airway, so a metric scale can be recovered in one connected
-   model.
-3. **Per-video camera calibration** — a checkerboard clip from the *same scope and session*
-   (several videos currently borrow calibration).
-4. **A capture protocol built for photogrammetry** — a steady, **advancing (non-dwelling)**
-   scope for parallax; minimize overexposure, specular glare, and mucus at the target region.
-
----
-
-## Repository notes
-
-Generated outputs (`runs/`), videos, COLMAP databases (`*.db`), MVS workspaces, raw point
-clouds (`*.ply`), and model weights are **git-ignored** and regenerable. Only source scripts,
-docs, and the lightweight example figures/reports under `docs/` are tracked. See `.gitignore`.
+- **Absolute mm needs a CT.** Monocular SfM is gauge-free and no static known-size object appears in
+  the field, so without CT all calibre is in scene units and only ratios (%obstruction) are reported.
+- **The reconstruction covers what the scope traverses.** Validated segments span 16–40 mm of trachea;
+  a near-occlusive stenosis stops the scope and the case becomes a documented boundary, not a result.
+- **Ground truth provenance.** The three published CT cases use the original TotalSegmentator ground
+  truth. 19-V1 uses a re-derived ground truth from `pipeline/ct_ground_truth.py`, validated against the
+  original on 2-V2 (0.46 mm RMSE, r = 0.99); on 50-V2 the two derivations differ by about 1 mm, so the
+  two sets are reported separately.
+- **Borrowed calibrations** (16-V1 from 2-V2, 32-V2 from 32-V1, 28-V2 from 20-V1) are flagged in the
+  calibration table; 70-V2 matches no cohort scope and is excluded.
+- Some legacy experiment scripts keep machine-specific dataset paths; the `pipeline/` tools do not.

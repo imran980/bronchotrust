@@ -1,0 +1,15 @@
+\begin{tabular}{lrrrr}
+\toprule
+Step (applied cumulatively) & \multicolumn{2}{c}{50-V2} & \multicolumn{2}{c}{2-V2} \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+ & RMSE (mm) & $n$ & RMSE (mm) & $n$ \\
+\midrule
+Original window, all-slice estimator & 2.41 & 44 & 1.44 & 27 \\
++ centred re-window (single pass) & 2.16 & 43 & 1.28 & 34 \\
++ coverage gate ($\geq0.75$) & 1.89 & 34 & 1.28 & 34 \\
++ partial-arc fit (gated estimator) & 1.00 & 16 & 1.02$^{\dagger}$ & 20 \\
++ dual-pass loop model, camera path on withdrawal pass & -- & -- & \textbf{1.07} & \textbf{40} \\
+\quad (same model, camera path on descent pass) & -- & -- & 1.63 & 32 \\
+Self-consistency ratio (partial-arc / camera calibre) & \multicolumn{2}{c}{1.18 (pass)} & \multicolumn{2}{c}{0.59 single pass, 0.57 loop (reject)} \\
+\bottomrule
+\end{tabular}

@@ -1,0 +1,42 @@
+{
+  "pooled": {
+    "rmse": 0.9877778310172501,
+    "bias": 0.011002222528282956,
+    "sd": 0.9939482677868794,
+    "loa": [
+      -1.9371363823340007,
+      1.9591408273905664
+    ],
+    "r": 0.9526152416473559,
+    "n": 80,
+    "baseline_pooled_rmse": 1.8545258052245004,
+    "mean_cases": 0.9663553217626047,
+    "baseline_mean_cases": 1.6606248783158566
+  },
+  "per_case": {
+    "2-V2": {
+      "before": 1.444422533229392,
+      "after": 1.0652076908008388,
+      "bias": -0.04721366538427611,
+      "n": 40,
+      "source": "re-run + M1 (M2 rejected: scale-degenerate, calibre ratio 0.57)",
+      "window": "dual-pass loop f880-3370, measured along the withdrawal pass"
+    },
+    "20-V1": {
+      "before": 1.1308941270957018,
+      "after": 0.8315942217741656,
+      "bias": 0.09965495574157124,
+      "n": 24,
+      "source": "existing cloud + M2",
+      "window": "existing refined cloud (f2500-3000)"
+    },
+    "50-V2": {
+      "before": 2.406557974622475,
+      "after": 1.0022640527128102,
+      "bias": 0.023562842489748215,
+      "n": 16,
+      "source": "re-run + M2",
+      "window": "re-windowed f230-520 (centred trachea, pre-carina)"
+    }
+  }
+}

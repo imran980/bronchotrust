@@ -1,5 +1,6 @@
 """General partial-arc CSA on a dense fused cloud. Usage: python csa_run.py <fused.ply> <LABEL> <out.png>"""
-import sys, numpy as np, open3d as o3d
+import sys, os, numpy as np, open3d as o3d
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from csa_partialarc import profile
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 
