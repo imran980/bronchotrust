@@ -6,7 +6,7 @@ from pathlib import Path
 WSNAME = sys.argv[1]; TAG = sys.argv[2] if len(sys.argv) > 2 else WSNAME
 SC = "/tmp/claude-100461304/-home-mi3dr-projects-bronchotrust/32888f63-b0c2-4d41-9ad1-91a5dfc651e6/scratchpad"
 WS = Path(f"{SC}/{WSNAME}"); CM = "/home/mi3dr/.conda/envs/colmap-cuda/bin/colmap"
-os.environ["LD_LIBRARY_PATH"] = "/home/mi3dr/.conda/envs/colmapcuda/lib"
+os.environ["LD_LIBRARY_PATH"] = "/home/mi3dr/.conda/envs/colmap-cuda/lib"
 OUT = Path("runs/own_data/porcine"); OUT.mkdir(parents=True, exist_ok=True)
 
 

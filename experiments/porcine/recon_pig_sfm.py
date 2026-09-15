@@ -11,7 +11,7 @@ MAXF = sys.argv[7] if len(sys.argv) > 7 else "8192"       # feature cap: lower (
 SC = "/tmp/claude-100461304/-home-mi3dr-projects-bronchotrust/32888f63-b0c2-4d41-9ad1-91a5dfc651e6/scratchpad"
 WS = Path(f"{SC}/{WSNAME}"); WS.mkdir(parents=True, exist_ok=True)
 COLMAP = "/home/mi3dr/.conda/envs/colmap-cuda/bin/colmap"
-os.environ["LD_LIBRARY_PATH"] = "/home/mi3dr/.conda/envs/colmapcuda/lib:" + os.environ.get("LD_LIBRARY_PATH", "")
+os.environ["LD_LIBRARY_PATH"] = "/home/mi3dr/.conda/envs/colmap-cuda/lib:" + os.environ.get("LD_LIBRARY_PATH", "")
 DARK_L = 12.0
 
 
